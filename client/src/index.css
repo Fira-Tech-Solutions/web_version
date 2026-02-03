@@ -1,0 +1,446 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 20 14.3% 4.1%;
+  --muted: 60 4.8% 95.9%;
+  --muted-foreground: 25 5.3% 44.7%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 20 14.3% 4.1%;
+  --card: 0 0% 100%;
+  --card-foreground: 20 14.3% 4.1%;
+  --border: 20 5.9% 90%;
+  --input: 20 5.9% 90%;
+  --primary: 207 90% 54%; /* #1976D2 */
+  --primary-foreground: 211 100% 99%;
+  --secondary: 60 4.8% 95.9%;
+  --secondary-foreground: 24 9.8% 10%;
+  --accent: 60 4.8% 95.9%;
+  --accent-foreground: 24 9.8% 10%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 60 9.1% 97.8%;
+  --ring: 20 14.3% 4.1%;
+  --radius: 0.5rem;
+  --success: 122 39% 49%; /* #388E3C */
+  --warning: 36 100% 50%; /* #F57C00 */
+  --error: 0 68% 42%; /* #D32F2F */
+  --surface: 0 0% 100%;
+  --chart-1: 207 90% 54%;
+  --chart-2: 122 39% 49%;
+  --chart-3: 36 100% 50%;
+  --chart-4: 291 64% 42%;
+  --chart-5: 0 68% 42%;
+}
+
+/* Custom animations for Bingo game */
+@keyframes shuffle-blink {
+  0%, 100% { 
+    background-color: rgb(251 191 36); 
+    transform: scale(1) rotate(0deg);
+    box-shadow: 0 0 12px rgba(251, 191, 36, 0.8);
+    border: 2px solid rgba(251, 191, 36, 0.5);
+  }
+  20% { 
+    background-color: rgb(239 68 68); 
+    transform: scale(1.15) rotate(8deg);
+    box-shadow: 0 0 18px rgba(239, 68, 68, 0.9);
+    border: 2px solid rgba(239, 68, 68, 0.7);
+  }
+}
+
+@keyframes winner-blink {
+  0%, 100% { 
+    background-color: rgb(59 130 246); 
+    transform: scale(1);
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.8);
+    border: 3px solid rgba(59, 130, 246, 0.9);
+  }
+  50% { 
+    background-color: rgb(37 99 235); 
+    transform: scale(1.1);
+    box-shadow: 0 0 25px rgba(37, 99, 235, 0.9);
+    border: 3px solid rgba(37, 99, 235, 1);
+  }
+}
+
+.winner-cell-animation {
+  animation: winner-blink 1s ease-in-out infinite;
+  color: white !important;
+  font-weight: bold;
+}
+
+/* Slow blinking animation for called numbers */
+@keyframes slow-blink {
+  0%, 100% { 
+    opacity: 1;
+  }
+  50% { 
+    opacity: 0.4;
+  }
+}
+
+.slow-blink {
+  animation: slow-blink 1.5s ease-in-out infinite;
+}
+
+/* Shuffle animation with improved timing */
+.shuffle-animation {
+  animation: shuffle-blink 0.4s ease-in-out infinite;
+}
+
+/* Fix UI scaling issues by preventing unwanted transforms */
+.bingo-board {
+  transform: none;
+}
+
+/* Ensure shuffle animation works properly within bingo board */
+.bingo-board .shuffle-animation {
+  animation: shuffle-blink 0.4s ease-in-out infinite;
+}
+
+.dark {
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 98%;
+  --muted: 240 3.7% 15.9%;
+  --muted-foreground: 240 5% 64.9%;
+  --popover: 240 10% 3.9%;
+  --popover-foreground: 0 0% 98%;
+  --card: 240 10% 3.9%;
+  --card-foreground: 0 0% 98%;
+  --border: 240 3.7% 15.9%;
+  --input: 240 3.7% 15.9%;
+  --primary: 207 90% 54%;
+  --primary-foreground: 211 100% 99%;
+  --secondary: 240 3.7% 15.9%;
+  --secondary-foreground: 0 0% 98%;
+  --accent: 240 3.7% 15.9%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+  --ring: 240 4.9% 83.9%;
+  --radius: 0.5rem;
+  --success: 122 39% 49%;
+  --warning: 36 100% 50%;
+  --error: 0 68% 42%;
+  --surface: 240 10% 3.9%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+  }
+}
+
+@layer components {
+  .bingo-cell {
+    @apply aspect-square flex items-center justify-center text-sm font-medium border rounded transition-colors;
+  }
+  
+  .bingo-cell.called {
+    @apply bg-green-100 border-green-400 text-green-800 font-semibold;
+  }
+  
+  .bingo-cell.free {
+    @apply bg-yellow-100 border-yellow-400 text-yellow-800 font-bold;
+  }
+  
+  .bingo-cell.normal {
+    @apply bg-gray-50 border-gray-200 text-gray-600;
+  }
+  
+  .bingo-header {
+    @apply text-center font-bold text-primary py-2 bg-blue-50 rounded;
+  }
+}
+
+/* Game floor layout (screenshot style) */
+.game-floor {
+  background: linear-gradient(180deg, #1e2229 0%, #2a2e36 100%);
+  min-height: 100vh;
+  color: #fff;
+}
+
+.game-floor .column1 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.game-floor .col1 {
+  flex: 0 0 auto;
+}
+
+.game-floor .col2 {
+  flex: 0 0 auto;
+}
+
+.game-floor .col3 {
+  flex: 0 0 auto;
+  background: linear-gradient(180deg, #1a1f28 0%, #252a32 100%);
+  padding: 1rem;
+  border-radius: 8px;
+  min-width: 200px;
+}
+
+.game-floor .col4 {
+  flex: 0 0 auto;
+  background: #050a46;
+  padding: 1rem 1.5rem;
+  border-radius: 8px;
+  text-align: center;
+  min-width: 120px;
+}
+
+/* Ball (number caller) - nested circles */
+.game-floor .contains {
+  position: relative;
+  width: 160px;
+  height: 160px;
+}
+
+.game-floor .ball2,
+.game-floor .ball3,
+.game-floor .ball4,
+.game-floor .ball5 {
+  position: absolute;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.game-floor .ball2 {
+  width: 160px;
+  height: 160px;
+  background: linear-gradient(145deg, #2d3548 0%, #1e2229 100%);
+  box-shadow: inset 0 2px 8px rgba(255,255,255,0.1), 0 4px 12px rgba(0,0,0,0.4);
+}
+
+.game-floor .ball3 {
+  width: 130px;
+  height: 130px;
+  background: linear-gradient(145deg, #3d4558 0%, #2a2e36 100%);
+  box-shadow: inset 0 2px 6px rgba(255,255,255,0.15);
+}
+
+.game-floor .ball4 {
+  width: 100px;
+  height: 100px;
+  background: linear-gradient(145deg, #4a5568 0%, #2d3548 100%);
+  box-shadow: inset 0 2px 4px rgba(255,255,255,0.2);
+}
+
+.game-floor .ball5 {
+  width: 70px;
+  height: 70px;
+  background: #fff;
+  color: #1e2229;
+  font-weight: 900;
+  font-size: 1.75rem;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* Small bingo card (5x5) */
+.game-floor .box1 {
+  background: #fff;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #333;
+}
+
+.game-floor #bingoTable,
+.game-floor .bingo-table-small {
+  border-collapse: collapse;
+  width: 100%;
+  max-width: 140px;
+}
+
+.game-floor #bingoTable th,
+.game-floor #bingoTable td,
+.game-floor .bingo-table-small th,
+.game-floor .bingo-table-small td {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #333;
+  text-align: center;
+  font-size: 10px;
+  padding: 0;
+}
+
+.game-floor .bingo-table-small .circle {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #1976D2;
+  margin: 0 auto;
+}
+
+/* Recent 5 Numbers */
+.game-floor .lastcall {
+  font-weight: 700;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  color: #fff;
+}
+
+.game-floor .table-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.game-floor .bingo-call {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #2d3548;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #fff;
+}
+
+.game-floor .bingo-call1 {
+  font-weight: 700;
+  color: #fff;
+  padding-left: 0.5rem;
+}
+
+/* Prize (col4) */
+.game-floor .prize {
+  font-weight: 700;
+  font-size: 1.5rem;
+  color: #fff;
+  margin: 0;
+}
+
+.game-floor .col4 .prize:first-of-type {
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+/* Column2: BINGO rows + number grid */
+.game-floor .column2 {
+  padding: 1rem;
+  width: 100%;
+}
+
+.game-floor .brow,
+.game-floor .irow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.game-floor .txtbox {
+  width: 36px;
+  min-width: 36px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1rem;
+  color: #fff;
+  border-radius: 4px;
+}
+
+.game-floor .callb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1;
+}
+
+.game-floor .numrow {
+  flex: 0 0 auto;
+}
+
+.game-floor .numbox {
+  width: 44px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.95rem;
+  background: #4a5568;
+  color: #fff;
+  border-radius: 4px;
+  margin: 0;
+  transition: background 0.2s, color 0.2s;
+}
+
+.game-floor .numbox.called {
+  background: #2d3548;
+  color: #a0aec0;
+}
+
+/* Control bar */
+.game-floor .controls-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 1rem;
+  padding: 0.75rem 0;
+}
+
+.game-floor .btnbingo {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  background: #1976D2;
+  color: #fff;
+  font-weight: 600;
+  transition: background-color 0.3s ease;
+}
+
+.game-floor .btnbingo:hover {
+  background: #1565c0;
+}
+
+.game-floor .btnshuffle {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  background: #1976D2;
+  color: #fff;
+  font-weight: 600;
+}
+
+.game-floor .toggle-container {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.game-floor .toggle-container label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
