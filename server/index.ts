@@ -1,11 +1,10 @@
 import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
+import { createServer } from "http";
+import { Server as SocketIOServer } from "socket.io";
 import session from "express-session";
-import ConnectPgSimple from "connect-pg-simple";
-import { pool } from "./db";
+import { db } from "./db";
 import { registerRoutes } from "./routes";
-import { registerMongoDBRoutes } from "./routes/mongodb";
-import { initializeMongoDBData } from "./db/mongodb-setup";
 import { setupVite, serveStatic, log } from "./lib/vite";
 
 const app = express();
@@ -38,16 +37,8 @@ app.use(express.static(publicPath, {
   }
 }));
 
-// Configure session store
-const PgSession = ConnectPgSimple(session);
-
-// Configure session middleware
+// Configure session middleware (using memory store for SQLite)
 app.use(session({
-  store: new PgSession({
-    pool: pool,
-    tableName: 'session',
-    createTableIfMissing: true
-  }),
   secret: 'bingo-session-secret-key-longer-for-security',
   resave: false,
   saveUninitialized: false,
@@ -94,10 +85,28 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  const { server } = await registerRoutes(app);
+  // Create HTTP server for Socket.io
+  const server = createServer(app);
+  const io = new SocketIOServer(server, {
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"]
+    }
+  });
 
-  // Register MongoDB routes alongside PostgreSQL routes
-  registerMongoDBRoutes(app);
+  // Store io instance globally for routes to use
+  (global as any).io = io;
+
+  // Handle Socket.io connections
+  io.on('connection', (socket) => {
+    console.log('Client connected to Socket.io:', socket.id);
+
+    socket.on('disconnect', () => {
+      console.log('Client disconnected from Socket.io:', socket.id);
+    });
+  });
+
+  const { server: routeServer } = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -123,15 +132,8 @@ app.use((req, res, next) => {
 
   server.listen(port, "0.0.0.0", async () => {
     log(`serving on port ${port}`);
-
-    // Initialize MongoDB data
-    try {
-      await initializeMongoDBData();
-    } catch (error) {
-      console.log("MongoDB initialization failed (optional):", error.message);
-    }
-
-    // Hardcoded cartela loading disabled - admins manage their own cartelas
+    console.log("SQLite database initialized with better-sqlite3.");
+    console.log("Socket.io server initialized for real-time updates.");
     console.log("Hardcoded cartela auto-loading is disabled. Admins can add cartelas manually.");
   }).on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {

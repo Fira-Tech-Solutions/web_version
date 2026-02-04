@@ -6,7 +6,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import session from "express-session";
 import { storage } from "../storage";
 import bcrypt from "bcrypt";
-import { insertUserSchema, insertShopSchema, insertGameSchema, insertGamePlayerSchema, insertTransactionSchema, insertEmployeeProfitMarginSchema, insertCustomCartelaSchema } from "@shared/schema";
+import { insertUserSchema, insertShopSchema, insertGameSchema, insertGamePlayerSchema, insertTransactionSchema, insertCustomCartelaSchema } from "@shared/schema-simple";
 import { z } from "zod";
 import { getFixedCartelaPattern as getFixedPattern, getCartelaNumbers } from "../lib/fixed-cartelas";
 import { encryptData, decryptData, signBalance, verifyBalance, generateKeyPair } from "../lib/crypto";
@@ -18,6 +18,16 @@ const { privateKey: SYSTEM_PRIVATE_KEY, publicKey: SYSTEM_PUBLIC_KEY } = generat
 declare module 'express-serve-static-core' {
   interface Request {
     session: any;
+  }
+}
+
+// Helper function to emit global balance updates
+function emitBalanceUpdate(shopId?: number) {
+  const io = (global as any).io;
+  if (io) {
+    storage.getMasterFloat(shopId).then(masterFloat => {
+      io.emit('global_balance_update', { masterFloat, shopId });
+    });
   }
 }
 
@@ -374,7 +384,7 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
       if (user.role === 'admin' && user.shopId) {
         const shop = await storage.getShop(user.shopId);
         if (shop) {
-          userWithCommission.commissionRate = shop.superAdminCommission;
+          userWithCommission.commissionRate = shop.profitMargin || '20';
         }
       }
 
@@ -403,6 +413,75 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
   });
 
   // User routes
+  // Get Master Float (sum of all user balances)
+  app.get("/api/admin/master-float", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+      
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const masterFloat = await storage.getMasterFloat(user.shopId);
+      const allBalances = await storage.getAllUserBalances();
+      
+      res.json({
+        masterFloat,
+        shopId: user.shopId,
+        allBalances: allBalances.filter(b => b.role === 'employee' && (!user.shopId || b.userId === user.shopId))
+      });
+    } catch (error) {
+      console.error("Error getting master float:", error);
+      res.status(500).json({ message: "Failed to get master float" });
+    }
+  });
+
+  // Load Credit (Admin only)
+  app.post("/api/admin/load-credit", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+      
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { amount } = req.body;
+      
+      if (!amount || parseFloat(amount) <= 0) {
+        return res.status(400).json({ message: "Invalid amount" });
+      }
+
+      // Add credit to admin's balance (this becomes part of master float)
+      const currentBalance = parseFloat(user.balance || "0");
+      const newBalance = currentBalance + parseFloat(amount);
+      
+      await storage.updateUserBalance(userId, newBalance.toString());
+      
+      // Create transaction record
+      await storage.createTransaction({
+        adminId: userId,
+        shopId: user.shopId,
+        amount: amount,
+        type: 'credit_load',
+        description: 'System credit loaded by admin'
+      });
+
+      // Emit balance update
+      emitBalanceUpdate(user.shopId);
+
+      res.json({ 
+        success: true, 
+        newBalance: newBalance.toString(),
+        message: `ETB ${amount} loaded successfully`
+      });
+    } catch (error) {
+      console.error("Error loading credit:", error);
+      res.status(500).json({ message: "Failed to load credit" });
+    }
+  });
+
   app.post("/api/users", async (req, res) => {
     try {
       const userData = insertUserSchema.parse(req.body);
@@ -500,7 +579,7 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
         if (userToDelete.role !== 'employee' || userToDelete.shopId !== currentUser.shopId) {
           return res.status(403).json({ message: "Cannot delete this user" });
         }
-      } else if (currentUser.role !== 'super_admin') {
+      } else if (currentUser.role !== 'admin') {
         return res.status(403).json({ message: "Insufficient permissions" });
       }
 
@@ -954,17 +1033,16 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
         }
       }
 
-      // Calculate total collected from entry fees using ACTUAL marked cartelas (both employee and collector)
+      // Calculate total collected from entry fees using ACTUAL marked cartelas
       const shopCartelas = await storage.getCartelasByShop(game.shopId);
-      const markedCartelas = shopCartelas.filter(c => c.collectorId !== null || c.bookedBy !== null);
+      const markedCartelas = shopCartelas.filter(c => c.bookedBy !== null);
       const actualPlayerCount = markedCartelas.length;
       let totalCollectedBirr = actualPlayerCount * parseFloat(game.entryFee || "0");
 
       console.log(`📊 CORRECTED Revenue calculation: ${actualPlayerCount} marked cartelas × ${game.entryFee} ETB = ${totalCollectedBirr} ETB`);
       console.log(`📊 Marked cartelas breakdown:`, markedCartelas.map(c => ({
         number: c.cartelaNumber,
-        source: c.collectorId !== null ? 'collector' : 'employee',
-        collectorId: c.collectorId,
+        source: 'employee',
         bookedBy: c.bookedBy
       })));
 
@@ -990,11 +1068,23 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
 
       // Process game profits with Super Admin revenue logging
       await storage.processGameProfits(gameId, totalCollectedBirr.toString());
-      console.log(`✅ Super Admin revenue logged from game ${gameId}`);
+      console.log(`✅ Admin revenue logged from game ${gameId}`);
 
-      // Reset all collector cartela markings after game completion
+      // Reset all cartela markings after game completion
       await storage.resetCartelasForShop(game.shopId);
-      console.log(`✅ Collector cartela markings reset for shop ${game.shopId}`);
+      console.log(`✅ Cartela markings reset for shop ${game.shopId}`);
+
+      // Emit balance update and game completion event
+      emitBalanceUpdate(game.shopId);
+      const io = (global as any).io;
+      if (io) {
+        io.emit('game_completed', {
+          gameId,
+          shopId: game.shopId,
+          winnerId,
+          totalCollected: totalCollectedBirr.toString()
+        });
+      }
 
       res.json({
         success: true,
@@ -1132,18 +1222,10 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const { commissionRate, profitMargin } = req.body;
+      const { profitMargin } = req.body;
 
-      // Only super admins can update commission rates
-      if (commissionRate !== undefined && user.role !== "super_admin") {
-        return res.status(403).json({ message: "Only super admins can update commission rates" });
-      }
-
-      // Regular admins can only update profit margins
+      // Only admins can update profit margins
       const updateData: any = {};
-      if (user.role === "super_admin" && commissionRate !== undefined) {
-        updateData.commissionRate = commissionRate.toString();
-      }
       if (profitMargin !== undefined) {
         updateData.profitMargin = profitMargin.toString();
       }
@@ -1429,13 +1511,9 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
         return res.status(404).json({ message: "User not found" });
       }
 
-      if (user.role === "super_admin") {
-        // Super admin can see all requests
+      if (user.role === "admin") {
+        // Admin can see all requests
         const requests = await storage.getAllWithdrawalRequests();
-        res.json(requests);
-      } else if (user.role === "admin") {
-        // Admin can see only their requests
-        const requests = await storage.getWithdrawalRequestsByAdmin(userId);
         res.json(requests);
       } else {
         return res.status(403).json({ message: "Access denied" });
@@ -1509,8 +1587,8 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
       }
 
       const user = await storage.getUser(userId);
-      if (!user || user.role !== "super_admin") {
-        return res.status(403).json({ message: "Super admin access required" });
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       if (action === "approve") {
@@ -1655,7 +1733,11 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
       const hashedPassword = await bcrypt.hash(newPassword, 10);
       await storage.updateUserPassword(employeeId, hashedPassword);
 
-      res.json({ success: true, message: "Password updated successfully" });
+      // Update user balance and emit balance update
+      const updatedUser = await storage.updateUserBalance(employeeId, newBalance.toString());
+      emitBalanceUpdate(updatedUser?.shopId);
+      
+      res.json({ success: true, newBalance: updatedUser?.creditBalance, message: "Password updated successfully" });
     } catch (error) {
       console.error("Failed to update employee password:", error);
       res.status(500).json({ message: "Failed to update password" });
@@ -1761,7 +1843,7 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
       }
 
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+      if (!user || user.role !== 'admin') {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -1803,7 +1885,7 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
       }
 
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+      if (!user || user.role !== 'admin') {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -1834,13 +1916,13 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
       }
 
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+      if (!user || user.role !== 'admin') {
         return res.status(403).json({ message: "Admin access required" });
       }
 
       let gameHistory;
-      if (user.role === 'super_admin') {
-        // Super admin sees all game history
+      if (user.role === 'admin') {
+        // Admin sees all game history
         gameHistory = await storage.getGameHistory(0); // 0 means all shops
       } else {
         // Admin sees only their shop's game history
@@ -2032,13 +2114,13 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
       }
 
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+      if (!user || user.role !== 'admin') {
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      // For super admin, return all employees; for admin, return only their shop's employees
+      // For admin, return all employees
       let employees;
-      if (user.role === 'super_admin') {
+      if (user.role === 'admin') {
         const allUsers = await storage.getUsers();
         employees = allUsers.filter(u => u.role === 'employee');
       } else {
@@ -2070,12 +2152,12 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
       }
 
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+      if (!user || user.role !== 'admin') {
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      // For super admin, return aggregate stats; for admin, return their shop's stats
-      if (user.role === 'super_admin') {
+      // For admin, return aggregate stats
+      if (user.role === 'admin') {
         // Return aggregate stats across all shops
         const allShops = await storage.getShops();
         const totalRevenue = allShops.reduce((sum, shop) => sum + parseFloat(shop.totalRevenue || "0"), 0);
@@ -2643,26 +2725,22 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
         return res.status(400).json({ message: "All numbers have been called" });
       }
 
-      // Pick random number from available
+      // Pick a random number
       const randomIndex = Math.floor(Math.random() * availableNumbers.length);
       const newNumber = availableNumbers[randomIndex];
       const updatedNumbers = [...currentNumbers, newNumber.toString()];
 
+      // Update game with new called number
       const updatedGame = await storage.updateGameNumbers(gameId, updatedNumbers);
-
-      // Broadcast to WebSocket clients
-      const clients = gameClients.get(gameId);
-      if (clients) {
-        const message = JSON.stringify({
-          type: 'number_called',
+      
+      // Emit number called event
+      const io = (global as any).io;
+      if (io) {
+        io.emit('number_called', {
           gameId,
+          number: newNumber,
           calledNumbers: updatedNumbers,
-          latestNumber: newNumber
-        });
-        clients.forEach(client => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(message);
-          }
+          shopId: game.shopId
         });
       }
 
@@ -3433,7 +3511,7 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
       }
 
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+      if (!user || user.role !== 'admin') {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -3569,7 +3647,7 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
       }
 
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+      if (!user || user.role !== 'admin') {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -3657,15 +3735,15 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
       }
 
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+      if (!user || user.role !== 'admin') {
         return res.status(403).json({ message: "Admin access required" });
       }
 
       const { shopId, startDate, endDate } = req.query;
 
       let employees;
-      if (user.role === 'super_admin' && !shopId) {
-        // Get all employees for super admin
+      if (user.role === 'admin' && !shopId) {
+        // Get all employees for admin
         const allUsers = await storage.getUsers();
         employees = allUsers.filter(u => u.role === 'employee');
       } else {
@@ -3728,7 +3806,7 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
       }
 
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+      if (!user || user.role !== 'admin') {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -3736,7 +3814,7 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
 
       let data;
       if (type === 'games') {
-        if (user.role === 'super_admin' && !shopId) {
+        if (user.role === 'admin' && !shopId) {
           const shops = await storage.getShops();
           data = [];
           for (const shop of shops) {

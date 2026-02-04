@@ -21,7 +21,8 @@ import { ErrorDisplay, LoadingState } from "@/components/error-display";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Users, DollarSign, GamepadIcon, BarChart3, UserPlus, CreditCard, Plus, ArrowRight, History, AlertCircle, Gift, Settings, Lock, Percent, Grid3X3 } from "lucide-react";
+import { useSocket } from "@/lib/websocket";
+import { Building2, Users, DollarSign, GamepadIcon, BarChart3, UserPlus, CreditCard, Plus, ArrowRight, History, AlertCircle, Gift, Settings, Lock, Percent, Grid3X3, TrendingUp } from "lucide-react";
 import CustomCartelaBuilder from "@/components/custom-cartela-builder";
 import UnifiedCartelaManager from "@/components/unified-cartela-manager";
 
@@ -37,6 +38,7 @@ export default function SimpleAdminDashboard({ onLogout }: SimpleAdminDashboardP
 
   const [rechargeAmount, setRechargeAmount] = useState("");
   const [rechargeRecipient, setRechargeRecipient] = useState("");
+  const [loadCreditAmount, setLoadCreditAmount] = useState("");
 
   const { data: employees, refetch: refetchEmployees } = useQuery({
     queryKey: ["/api/admin/employees", user?.shopId],
@@ -46,6 +48,53 @@ export default function SimpleAdminDashboard({ onLogout }: SimpleAdminDashboardP
   const { data: shopStats } = useQuery({
     queryKey: [`/api/shops/${user?.shopId}`],
     enabled: !!user?.shopId,
+  });
+
+  const { data: masterFloatData, refetch: refetchMasterFloat } = useQuery({
+    queryKey: ["/api/admin/master-float"],
+    enabled: !!user?.shopId,
+  });
+
+  // Socket.io integration for real-time updates
+  useSocket((message) => {
+    if (message.type === 'global_balance_update') {
+      refetchMasterFloat();
+      toast({
+        title: "Balance Updated",
+        description: "System total float has been updated.",
+      });
+    } else if (message.type === 'game_completed') {
+      refetchMasterFloat();
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/game-history"] });
+      toast({
+        title: "Game Completed",
+        description: `Game ${message.gameId} has been completed.`,
+      });
+    }
+  });
+
+  // Load Credit Mutation
+  const loadCreditMutation = useMutation({
+    mutationFn: async (amount: string) => {
+      const response = await apiRequest("POST", "/api/admin/load-credit", { amount });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      refetchMasterFloat();
+      queryClient.invalidateQueries({ queryKey: [`/api/shops/${user?.shopId}`] });
+      toast({
+        title: "Credit Loaded Successfully",
+        description: `ETB ${amount} has been added to the system.`,
+      });
+      setLoadCreditAmount("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to load credit",
+        variant: "destructive",
+      });
+    },
   });
 
   const generateRechargeFileMutation = useMutation({
@@ -86,7 +135,7 @@ export default function SimpleAdminDashboard({ onLogout }: SimpleAdminDashboardP
   }
 
   // Redirect non-admin users
-  if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+  if (!user || user.role !== 'admin') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <Card className="w-96">
@@ -117,6 +166,18 @@ export default function SimpleAdminDashboard({ onLogout }: SimpleAdminDashboardP
 
   const handleEmployeeCreated = () => {
     refetchEmployees();
+  };
+
+  const handleLoadCredit = () => {
+    if (!loadCreditAmount || parseFloat(loadCreditAmount) <= 0) {
+      toast({
+        title: "Invalid Amount",
+        description: "Please provide a valid credit amount",
+        variant: "destructive",
+      });
+      return;
+    }
+    loadCreditMutation.mutate(loadCreditAmount);
   };
 
   const handleGenerateRechargeFile = () => {
@@ -178,7 +239,7 @@ export default function SimpleAdminDashboard({ onLogout }: SimpleAdminDashboardP
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
               <Card className="border-l-4 border-l-blue-500">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-gray-500 uppercase">Total Revenue</CardTitle>
@@ -186,6 +247,19 @@ export default function SimpleAdminDashboard({ onLogout }: SimpleAdminDashboardP
                 <CardContent>
                   <div className="text-2xl font-bold text-gray-900">ETB {shopStats?.totalRevenue || '0.00'}</div>
                   <p className="text-xs text-green-600 mt-1 font-medium">↑ All time total</p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-l-4 border-l-emerald-500">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-gray-500 uppercase flex items-center gap-1">
+                    <TrendingUp className="w-3 h-3" />
+                    Master Float
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-gray-900">ETB {masterFloatData?.masterFloat || '0.00'}</div>
+                  <p className="text-xs text-emerald-600 mt-1 font-medium">System total balance</p>
                 </CardContent>
               </Card>
 
@@ -222,14 +296,45 @@ export default function SimpleAdminDashboard({ onLogout }: SimpleAdminDashboardP
               </Card>
             </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Game Activity</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <EnhancedGameHistory shopId={user.shopId} />
-              </CardContent>
-            </Card>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <CreditCard className="w-5 h-5" />
+                    Load System Credit
+                  </CardTitle>
+                  <CardDescription>Add credit to the system master float</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="loadCreditAmount">Amount (ETB)</Label>
+                    <Input
+                      id="loadCreditAmount"
+                      type="number"
+                      placeholder="Enter amount"
+                      value={loadCreditAmount}
+                      onChange={(e) => setLoadCreditAmount(e.target.value)}
+                    />
+                  </div>
+                  <Button 
+                    onClick={handleLoadCredit}
+                    disabled={loadCreditMutation.isPending}
+                    className="w-full"
+                  >
+                    {loadCreditMutation.isPending ? "Loading..." : "Load Credit"}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recent Game Activity</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <EnhancedGameHistory shopId={user.shopId} />
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="employees" className="space-y-6">

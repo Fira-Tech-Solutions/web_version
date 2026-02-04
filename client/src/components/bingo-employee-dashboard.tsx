@@ -5,7 +5,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Upload, X } from "lucide-react";
+import { Upload, X, Settings, Trophy } from "lucide-react";
+import { customBingoVoice } from "@/lib/custom-voice-synthesis";
+import AudioControls from "@/components/audio-controls";
+import WinnerCheckPopup from "@/components/winner-check-popup";
 
 interface BingoEmployeeDashboardProps {
   onLogout: () => void;
@@ -30,6 +33,9 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const [topUpFee, setTopUpFee] = useState("10");
   const [gameMode, setGameMode] = useState("Bereket");
   const [rechargeFile, setRechargeFile] = useState<File | null>(null);
+  const [showAudioControls, setShowAudioControls] = useState(false);
+  const [showWinnerCheck, setShowWinnerCheck] = useState(false);
+  const [isCallingNumber, setIsCallingNumber] = useState(false);
 
   // Active game query
   const { data: activeGame } = useQuery({
@@ -159,25 +165,8 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     }
   };
 
-  // Start game handler
-  const handleStartGame = () => {
-    if (selectedCards.size === 0) {
-      toast({
-        title: "No Cards Selected",
-        description: "Please select at least one card",
-        variant: "destructive"
-      });
-      return;
-    }
-    setGameState('PLAYING');
-    toast({
-      title: "Game Started",
-      description: `Playing with ${selectedCards.size} cards`
-    });
-  };
-
-  // Call number handler
-  const handleCallNumber = () => {
+  // Call number handler with voice synthesis
+  const handleCallNumber = async () => {
     const availableNumbers = Array.from({ length: 75 }, (_, i) => i + 1)
       .filter(n => !calledNumbers.includes(n));
 
@@ -186,18 +175,112 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     const randomIndex = Math.floor(Math.random() * availableNumbers.length);
     const newNumber = availableNumbers[randomIndex];
 
-    setCurrentNumber(newNumber);
-    setCalledNumbers([...calledNumbers, newNumber]);
+    setIsCallingNumber(true);
+    
+    try {
+      // Announce the number with voice
+      await customBingoVoice.callNumber(newNumber);
+      
+      setCurrentNumber(newNumber);
+      setCalledNumbers([...calledNumbers, newNumber]);
+      
+      toast({
+        title: "Number Called",
+        description: `${getLetterForNumber(newNumber)} ${newNumber}`
+      });
+    } catch (error) {
+      console.error('Error calling number:', error);
+      // Still update the game state even if voice fails
+      setCurrentNumber(newNumber);
+      setCalledNumbers([...calledNumbers, newNumber]);
+    } finally {
+      setIsCallingNumber(false);
+    }
   };
 
-  // Check card handler
-  const handleCheckCard = () => {
-    if (!checkCardInput) return;
+  // Check winner handler
+  const handleCheckWinner = async (cartelaNumber: number): Promise<{ isWinner: boolean; pattern?: string }> => {
+    try {
+      const response = await fetch('/api/games/check-winner', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cartelaNumber,
+          calledNumbers
+        })
+      });
 
-    toast({
-      title: "Card Checked",
-      description: `Checking card #${checkCardInput}`
-    });
+      if (!response.ok) {
+        throw new Error('Failed to check winner');
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      console.error('Error checking winner:', error);
+      throw error;
+    }
+  };
+
+  // Start game with voice announcement
+  const handleStartGame = async () => {
+    if (selectedCards.size === 0) {
+      toast({
+        title: "No Cards Selected",
+        description: "Please select at least one card to start the game",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    try {
+      // Announce game start
+      await customBingoVoice.announceGameStart();
+      setGameState('PLAYING');
+      toast({
+        title: "Game Started",
+        description: `Playing with ${selectedCards.size} cards`
+      });
+    } catch (error) {
+      console.error('Error announcing game start:', error);
+      // Still start the game even if voice fails
+      setGameState('PLAYING');
+      toast({
+        title: "Game Started",
+        description: `Playing with ${selectedCards.size} cards`
+      });
+    }
+  };
+
+  // Check card handler for manual card checking
+  const handleCheckCard = () => {
+    if (!checkCardInput) {
+      toast({
+        title: "No Card Number",
+        description: "Please enter a cartela number to check",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const cartelaNumber = parseInt(checkCardInput);
+    if (isNaN(cartelaNumber) || cartelaNumber <= 0) {
+      toast({
+        title: "Invalid Card Number",
+        description: "Please enter a valid cartela number",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Open winner check popup with the entered card number
+    setShowWinnerCheck(true);
+    // Set the check card input so it gets passed to the popup
+    setTimeout(() => {
+      // This ensures the popup receives the initial value
+    }, 0);
   };
 
   return (
@@ -223,6 +306,20 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                   className="hover:text-blue-400 transition"
                 >
                   Report
+                </button>
+                <button
+                  onClick={() => setShowAudioControls(!showAudioControls)}
+                  className="hover:text-blue-400 transition flex items-center gap-1"
+                >
+                  <Settings className="w-4 h-4" />
+                  Audio
+                </button>
+                <button
+                  onClick={() => setShowWinnerCheck(true)}
+                  className="hover:text-blue-400 transition flex items-center gap-1"
+                >
+                  <Trophy className="w-4 h-4" />
+                  Check Winner
                 </button>
               </div>
               <div className="text-sm">Round 1</div>
@@ -542,13 +639,28 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
             {/* 5x5 Pattern Preview */}
             <div className="bg-gray-800 rounded-lg p-4">
-              <div className="grid grid-cols-5 gap-1">
-                {Array.from({ length: 25 }, (_, i) => (
-                  <div
-                    key={i}
-                    className={`aspect-square rounded ${i < 5 ? 'bg-blue-600' : 'bg-white'
-                      }`}
-                  />
+              <div className="grid grid-cols-5 gap-2 mb-2">
+                <div className="font-bold text-blue-900">B</div>
+                <div className="font-bold text-blue-900">I</div>
+                <div className="font-bold text-blue-900">N</div>
+                <div className="font-bold text-blue-900">G</div>
+                <div className="font-bold text-blue-900">O</div>
+              </div>
+              <div className="grid grid-cols-5 gap-2 text-sm">
+                {[15, 16, 39, 59, 66].map((n, i) => (
+                  <div key={i} className="bg-white border-2 border-blue-900 rounded p-2 font-bold text-blue-900">
+                    {n}
+                  </div>
+                ))}
+                {[11, 28, 40, 51, 68].map((n, i) => (
+                  <div key={i} className="bg-white border-2 border-blue-900 rounded p-2 font-bold text-blue-900">
+                    {n}
+                  </div>
+                ))}
+                {[12, 20].map((n, i) => (
+                  <div key={i} className="bg-white border-2 border-blue-900 rounded p-2 font-bold text-blue-900">
+                    {n}
+                  </div>
                 ))}
               </div>
             </div>
@@ -629,9 +741,10 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
           <div className="bg-gray-800 rounded-lg p-4 flex items-center justify-between gap-4">
             <Button
               onClick={handleCallNumber}
+              disabled={isCallingNumber}
               className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 text-lg font-bold"
             >
-              Bingo
+              {isCallingNumber ? "Calling..." : "Bingo"}
             </Button>
 
             <Button
@@ -674,28 +787,6 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
               />
             </div>
 
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="manual"
-                checked={isManual}
-                onChange={(e) => setIsManual(e.target.checked)}
-                className="w-5 h-5"
-              />
-              <label htmlFor="manual" className="text-white font-medium">Manual</label>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="autocheck"
-                checked={!isManual}
-                onChange={(e) => setIsManual(!e.target.checked)}
-                className="w-5 h-5"
-              />
-              <label htmlFor="autocheck" className="text-white font-medium">Autocheck</label>
-            </div>
-
             <Input
               type="text"
               placeholder="Enter Card Num"
@@ -713,6 +804,37 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
           </div>
         </div>
       )}
+
+      {/* Audio Controls Popup */}
+      {showAudioControls && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full mx-4">
+            <div className="bg-gray-800 text-white px-6 py-4 rounded-t-lg flex justify-between items-center">
+              <h2 className="text-xl font-bold">Audio Settings</h2>
+              <Button
+                onClick={() => setShowAudioControls(false)}
+                variant="ghost"
+                size="sm"
+                className="text-white hover:bg-white hover:bg-opacity-20"
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+            <div className="p-6">
+              <AudioControls />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Winner Check Popup */}
+      <WinnerCheckPopup
+        isOpen={showWinnerCheck}
+        onClose={() => setShowWinnerCheck(false)}
+        calledNumbers={calledNumbers}
+        onCheckWinner={handleCheckWinner}
+        initialCartelaNumber={checkCardInput}
+      />
     </div>
   );
 }

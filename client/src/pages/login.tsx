@@ -27,9 +27,6 @@ export default function Login() {
       
       // Redirect based on user role
       switch (user.role) {
-        case 'super_admin':
-          setLocation('/super-admin');
-          break;
         case 'admin':
           setLocation('/admin');
           break;

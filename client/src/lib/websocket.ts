@@ -1,79 +1,80 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { io, Socket } from 'socket.io-client';
 
-interface WebSocketMessage {
+interface SocketMessage {
   type: string;
   [key: string]: any;
 }
 
-export function useWebSocket(
-  gameId: number,
-  onMessage: (message: WebSocketMessage) => void
+export function useSocket(
+  onMessage: (message: SocketMessage) => void
 ) {
   const [isConnected, setIsConnected] = useState(false);
-  const ws = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+  const socket = useRef<Socket | null>(null);
 
   const connect = useCallback(() => {
-    if (!gameId || ws.current?.readyState === WebSocket.OPEN) return;
+    if (socket.current?.connected) return;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws?gameId=${gameId}`;
+    const socketUrl = window.location.protocol === "https:" ? "https://" + window.location.host : "http://" + window.location.host;
+    
+    socket.current = io(socketUrl, {
+      transports: ['websocket', 'polling']
+    });
 
-    ws.current = new WebSocket(wsUrl);
-
-    ws.current.onopen = () => {
+    socket.current.on('connect', () => {
       setIsConnected(true);
-      console.log('WebSocket connected');
-    };
+      console.log('Socket.io connected');
+    });
 
-    ws.current.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        onMessage(message);
-      } catch (error) {
-        console.error('Failed to parse WebSocket message:', error);
-      }
-    };
-
-    ws.current.onclose = () => {
+    socket.current.on('disconnect', () => {
       setIsConnected(false);
-      console.log('WebSocket disconnected');
-      
-      // Attempt to reconnect after 3 seconds
-      reconnectTimeoutRef.current = setTimeout(() => {
-        connect();
-      }, 3000);
-    };
+      console.log('Socket.io disconnected');
+    });
 
-    ws.current.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-  }, [gameId, onMessage]);
+    // Listen for all game-related events
+    socket.current.on('global_balance_update', (data) => {
+      onMessage({ type: 'global_balance_update', ...data });
+    });
 
-  const sendMessage = useCallback((message: WebSocketMessage) => {
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify(message));
+    socket.current.on('number_called', (data) => {
+      onMessage({ type: 'number_called', ...data });
+    });
+
+    socket.current.on('game_completed', (data) => {
+      onMessage({ type: 'game_completed', ...data });
+    });
+
+    socket.current.on('connect_error', (error) => {
+      console.error('Socket.io connection error:', error);
+    });
+  }, [onMessage]);
+
+  const sendMessage = useCallback((event: string, data: any) => {
+    if (socket.current?.connected) {
+      socket.current.emit(event, data);
     }
   }, []);
 
   const disconnect = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-    }
-    if (ws.current) {
-      ws.current.close();
+    if (socket.current) {
+      socket.current.disconnect();
     }
   }, []);
 
   useEffect(() => {
-    if (gameId) {
-      connect();
-    }
-
+    connect();
     return () => {
       disconnect();
     };
-  }, [gameId, connect, disconnect]);
+  }, [connect, disconnect]);
 
   return { isConnected, sendMessage, disconnect };
+}
+
+// Legacy export for backward compatibility
+export function useWebSocket(
+  gameId: number,
+  onMessage: (message: SocketMessage) => void
+) {
+  return useSocket(onMessage);
 }

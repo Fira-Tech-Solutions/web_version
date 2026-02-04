@@ -1,15 +1,9 @@
 import {
   users, shops, games, gamePlayers, transactions, gameHistory,
-  dailyRevenueSummary, employeeProfitMargins,
-  cartelas, customCartelas,
-  type User, type InsertUser, type Shop, type InsertShop,
-  type Game, type InsertGame, type GamePlayer, type InsertGamePlayer,
-  type Transaction, type InsertTransaction,
-  type GameHistory, type InsertGameHistory,
-  type DailyRevenueSummary, type InsertDailyRevenueSummary,
-  type EmployeeProfitMargin, type InsertEmployeeProfitMargin,
-  type CustomCartela, type InsertCustomCartela
-} from "@shared/schema";
+  dailyRevenueSummary, cartelas,
+  type User, type Shop, type Game, type GamePlayer,
+  type Transaction, type GameHistory, type DailyRevenueSummary, type Cartela
+} from "@shared/schema-simple";
 import { db } from "./db";
 import { eq, and, or, desc, gte, lte, sum, count } from "drizzle-orm";
 
@@ -18,8 +12,8 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByShopId(shopId: number): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
-  updateUser(id: number, updates: Partial<InsertUser>): Promise<User | undefined>;
+  createUser(user: any): Promise<User>;
+  updateUser(id: number, updates: Partial<User>): Promise<User | undefined>;
   updateUserBalance(id: number, balance: string): Promise<User | undefined>;
   deleteUser(id: number): Promise<boolean>;
   getUsersByShop(shopId: number): Promise<User[]>;
@@ -27,16 +21,16 @@ export interface IStorage {
   // Shop methods
   getShop(id: number): Promise<Shop | undefined>;
   getShops(): Promise<Shop[]>;
-  createShop(shop: InsertShop): Promise<Shop>;
-  updateShop(id: number, updates: Partial<InsertShop>): Promise<Shop | undefined>;
+  createShop(shop: any): Promise<Shop>;
+  updateShop(id: number, updates: Partial<Shop>): Promise<Shop | undefined>;
   getShopsByAdmin(adminId: number): Promise<Shop[]>;
 
   // Game methods
   getGame(id: number): Promise<Game | undefined>;
   getGamesByShop(shopId: number): Promise<Game[]>;
   getActiveGameByEmployee(employeeId: number): Promise<Game | undefined>;
-  createGame(game: InsertGame): Promise<Game>;
-  updateGame(id: number, updates: Partial<InsertGame>): Promise<Game | undefined>;
+  createGame(game: any): Promise<Game>;
+  updateGame(id: number, updates: Partial<Game>): Promise<Game | undefined>;
   updateGameStatus(gameId: number, status: string): Promise<Game>;
   updateGameNumbers(gameId: number, calledNumbers: string[]): Promise<Game>;
   updateGamePrizePool(gameId: number, additionalAmount: number): Promise<Game>;
@@ -45,21 +39,19 @@ export interface IStorage {
   // Game Player methods
   getGamePlayers(gameId: number): Promise<GamePlayer[]>;
   getGamePlayerCount(gameId: number): Promise<number>;
-  createGamePlayer(player: InsertGamePlayer): Promise<GamePlayer>;
-  addGamePlayer(player: InsertGamePlayer): Promise<GamePlayer>;
-  updateGamePlayer(id: number, updates: Partial<InsertGamePlayer>): Promise<GamePlayer | undefined>;
+  createGamePlayer(player: any): Promise<GamePlayer>;
+  addGamePlayer(player: any): Promise<GamePlayer>;
+  updateGamePlayer(id: number, updates: Partial<GamePlayer>): Promise<GamePlayer | undefined>;
   removeGamePlayer(id: number): Promise<boolean>;
 
   // Transaction methods
-  createTransaction(transaction: InsertTransaction): Promise<Transaction>;
+  createTransaction(transaction: any): Promise<Transaction>;
   getTransactionsByShop(shopId: number, startDate?: Date, endDate?: Date): Promise<Transaction[]>;
   getTransactionsByEmployee(employeeId: number, startDate?: Date, endDate?: Date): Promise<Transaction[]>;
 
-
-
   // Game History methods
-  createGameHistory(history: InsertGameHistory): Promise<GameHistory>;
-  recordGameHistory(history: InsertGameHistory): Promise<GameHistory>;
+  createGameHistory(history: any): Promise<GameHistory>;
+  recordGameHistory(history: any): Promise<GameHistory>;
   getGameHistory(shopId: number, startDate?: Date, endDate?: Date): Promise<GameHistory[]>;
   getEmployeeGameHistory(employeeId: number, startDate?: Date, endDate?: Date): Promise<GameHistory[]>;
 
@@ -84,22 +76,17 @@ export interface IStorage {
   generateAccountNumber(): Promise<string>;
 
   // Daily revenue summary methods
-  createOrUpdateDailyRevenueSummary(summary: InsertDailyRevenueSummary): Promise<DailyRevenueSummary>;
+  createOrUpdateDailyRevenueSummary(summary: any): Promise<DailyRevenueSummary>;
   getDailyRevenueSummary(date: string): Promise<DailyRevenueSummary | undefined>;
   getDailyRevenueSummaries(dateFrom?: string, dateTo?: string): Promise<DailyRevenueSummary[]>;
 
-  // Employee profit margin methods
-  setEmployeeProfitMargin(margin: InsertEmployeeProfitMargin): Promise<EmployeeProfitMargin>;
-  getEmployeeProfitMarginsByAdmin(adminId: number): Promise<any[]>;
-  updateEmployeeProfitMargin(marginId: number, profitMargin: string, adminId: number): Promise<EmployeeProfitMargin>;
-  updateUserPassword(userId: number, hashedPassword: string): Promise<void>;
-
-  // Employee cartela marking methods
-  markCartelaByEmployee(cartelaId: number, employeeId: number): Promise<void>;
-  unmarkCartelaByEmployee(cartelaId: number, employeeId: number): Promise<void>;
-
-  // Game reset methods
+  // Cartela methods
+  getCartelaByNumber(shopId: number, cartelaNumber: number): Promise<any | null>;
   resetCartelasForShop(shopId: number): Promise<void>;
+
+  // Master Float methods
+  getMasterFloat(shopId?: number): Promise<string>;
+  getAllUserBalances(): Promise<{ userId: number; username: string; balance: string; role: string }[]>;
 
   // EAT time zone utility methods
   getCurrentEATDate(): string;
@@ -135,19 +122,19 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values(insertUser).returning();
-    return user;
+  async createUser(user: any): Promise<User> {
+    const [newUser] = await db.insert(users).values(user).returning();
+    return newUser;
   }
 
-  async updateUser(id: number, updates: Partial<InsertUser>): Promise<User | undefined> {
+  async updateUser(id: number, updates: Partial<User>): Promise<User | undefined> {
     const [user] = await db.update(users).set(updates).where(eq(users.id, id)).returning();
     return user || undefined;
   }
 
   async deleteUser(id: number): Promise<boolean> {
     const result = await db.delete(users).where(eq(users.id, id));
-    return result.rowCount > 0;
+    return result.changes > 0;
   }
 
   async getUsersByShop(shopId: number): Promise<User[]> {
@@ -177,12 +164,12 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(shops).orderBy(desc(shops.createdAt));
   }
 
-  async createShop(insertShop: InsertShop): Promise<Shop> {
-    const [shop] = await db.insert(shops).values(insertShop).returning();
-    return shop;
+  async createShop(shop: any): Promise<Shop> {
+    const [newShop] = await db.insert(shops).values(shop).returning();
+    return newShop;
   }
 
-  async updateShop(id: number, updates: Partial<InsertShop>): Promise<Shop | undefined> {
+  async updateShop(id: number, updates: Partial<Shop>): Promise<Shop | undefined> {
     const [shop] = await db.update(shops).set(updates).where(eq(shops.id, id)).returning();
     return shop || undefined;
   }
@@ -244,12 +231,12 @@ export class DatabaseStorage implements IStorage {
     return recentGames;
   }
 
-  async createGame(insertGame: InsertGame): Promise<Game> {
-    const [game] = await db.insert(games).values(insertGame).returning();
-    return game;
+  async createGame(game: any): Promise<Game> {
+    const [newGame] = await db.insert(games).values(game).returning();
+    return newGame;
   }
 
-  async updateGame(id: number, updates: Partial<InsertGame>): Promise<Game | undefined> {
+  async updateGame(id: number, updates: Partial<Game>): Promise<Game | undefined> {
     const [game] = await db.update(games).set(updates).where(eq(games.id, id)).returning();
     return game || undefined;
   }
@@ -308,13 +295,13 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(gamePlayers.registeredAt));
   }
 
-  async createGamePlayer(insertPlayer: InsertGamePlayer): Promise<GamePlayer> {
-    const [player] = await db.insert(gamePlayers).values(insertPlayer).returning();
-    return player;
+  async createGamePlayer(player: any): Promise<GamePlayer> {
+    const [newPlayer] = await db.insert(gamePlayers).values(player).returning();
+    return newPlayer;
   }
 
-  async addGamePlayer(insertPlayer: InsertGamePlayer): Promise<GamePlayer> {
-    return this.createGamePlayer(insertPlayer);
+  async addGamePlayer(player: any): Promise<GamePlayer> {
+    return this.createGamePlayer(player);
   }
 
   async getGamePlayerCount(gameId: number): Promise<number> {
@@ -324,19 +311,19 @@ export class DatabaseStorage implements IStorage {
     return result[0]?.count || 0;
   }
 
-  async updateGamePlayer(id: number, updates: Partial<InsertGamePlayer>): Promise<GamePlayer | undefined> {
+  async updateGamePlayer(id: number, updates: Partial<GamePlayer>): Promise<GamePlayer | undefined> {
     const [player] = await db.update(gamePlayers).set(updates).where(eq(gamePlayers.id, id)).returning();
     return player || undefined;
   }
 
   async removeGamePlayer(id: number): Promise<boolean> {
     const result = await db.delete(gamePlayers).where(eq(gamePlayers.id, id));
-    return result.rowCount > 0;
+    return result.changes > 0;
   }
 
-  async createTransaction(insertTransaction: InsertTransaction): Promise<Transaction> {
-    const [transaction] = await db.insert(transactions).values(insertTransaction).returning();
-    return transaction;
+  async createTransaction(transaction: any): Promise<Transaction> {
+    const [newTransaction] = await db.insert(transactions).values(transaction).returning();
+    return newTransaction;
   }
 
   async getTransactionsByShop(shopId: number, startDate?: Date, endDate?: Date): Promise<Transaction[]> {
@@ -367,37 +354,17 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(transactions.createdAt));
   }
 
-
-
-  async createGameHistory(insertHistory: InsertGameHistory): Promise<GameHistory> {
-    const [history] = await db.insert(gameHistory).values(insertHistory).returning();
-    return history;
+  async createGameHistory(history: any): Promise<GameHistory> {
+    const [newHistory] = await db.insert(gameHistory).values(history).returning();
+    return newHistory;
   }
 
-  async recordGameHistory(insertHistory: InsertGameHistory): Promise<GameHistory> {
-    return this.createGameHistory(insertHistory);
+  async recordGameHistory(history: any): Promise<GameHistory> {
+    return this.createGameHistory(history);
   }
 
-  async getGameHistory(shopId: number, startDate?: Date, endDate?: Date): Promise<any[]> {
-    let query = db.select({
-      id: gameHistory.id,
-      gameId: gameHistory.gameId,
-      shopId: gameHistory.shopId,
-      employeeId: gameHistory.employeeId,
-      totalCollected: gameHistory.totalCollected,
-      prizeAmount: gameHistory.prizeAmount,
-      adminProfit: gameHistory.adminProfit,
-
-      playerCount: gameHistory.playerCount,
-      winnerName: gamePlayers.playerName,
-      completedAt: gameHistory.completedAt,
-      winnerId: games.winnerId,
-      winningCartela: gameHistory.winningCartela
-    })
-      .from(gameHistory)
-      .leftJoin(games, eq(gameHistory.gameId, games.id))
-      .leftJoin(gamePlayers, eq(games.winnerId, gamePlayers.id))
-      .where(eq(gameHistory.shopId, shopId));
+  async getGameHistory(shopId: number, startDate?: Date, endDate?: Date): Promise<GameHistory[]> {
+    let query = db.select().from(gameHistory).where(eq(gameHistory.shopId, shopId));
 
     if (startDate && endDate) {
       query = query.where(and(
@@ -410,26 +377,8 @@ export class DatabaseStorage implements IStorage {
     return await query.orderBy(desc(gameHistory.completedAt));
   }
 
-  async getEmployeeGameHistory(employeeId: number, startDate?: Date, endDate?: Date): Promise<any[]> {
-    let query = db.select({
-      id: gameHistory.id,
-      gameId: gameHistory.gameId,
-      shopId: gameHistory.shopId,
-      employeeId: gameHistory.employeeId,
-      totalCollected: gameHistory.totalCollected,
-      prizeAmount: gameHistory.prizeAmount,
-      adminProfit: gameHistory.adminProfit,
-
-      playerCount: gameHistory.playerCount,
-      winnerName: gamePlayers.playerName,
-      completedAt: gameHistory.completedAt,
-      winnerId: games.winnerId,
-      winningCartela: gameHistory.winningCartela
-    })
-      .from(gameHistory)
-      .leftJoin(games, eq(gameHistory.gameId, games.id))
-      .leftJoin(gamePlayers, eq(games.winnerId, gamePlayers.id))
-      .where(eq(gameHistory.employeeId, employeeId));
+  async getEmployeeGameHistory(employeeId: number, startDate?: Date, endDate?: Date): Promise<GameHistory[]> {
+    let query = db.select().from(gameHistory).where(eq(gameHistory.employeeId, employeeId));
 
     if (startDate && endDate) {
       query = query.where(and(
@@ -553,15 +502,55 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
+  async calculateProfitSharing(gameAmount: string, shopId: number): Promise<{
+    adminProfit: string;
+    prizeAmount: string;
+  }> {
+    const shop = await this.getShop(shopId);
+    if (!shop) throw new Error('Shop not found');
 
+    const profitMargin = parseFloat(shop.profitMargin);
+    const adminProfit = (parseFloat(gameAmount) * (profitMargin / 100)).toString();
+    const prizeAmount = (parseFloat(gameAmount) - parseFloat(adminProfit)).toString();
 
+    return {
+      adminProfit,
+      prizeAmount
+    };
+  }
 
+  async processGameProfits(gameId: number, totalCollected: string): Promise<void> {
+    const game = await this.getGame(gameId);
+    if (!game) throw new Error('Game not found');
 
+    const { adminProfit, prizeAmount } = await this.calculateProfitSharing(totalCollected, game.shopId);
 
+    // Update shop balance
+    const shop = await this.getShop(game.shopId);
+    if (shop) {
+      const newShopBalance = (parseFloat(shop.balance) + parseFloat(adminProfit)).toString();
+      await this.updateShop(shop.id, { balance: newShopBalance });
+    }
 
+    // Create transaction records
+    await this.createTransaction({
+      gameId,
+      shopId: game.shopId,
+      employeeId: game.employeeId,
+      amount: adminProfit,
+      type: 'admin_profit',
+      description: 'Admin profit from game'
+    });
 
-
-
+    await this.createTransaction({
+      gameId,
+      shopId: game.shopId,
+      employeeId: game.employeeId,
+      amount: prizeAmount,
+      type: 'prize_payout',
+      description: 'Prize payout for game'
+    });
+  }
 
   async generateAccountNumber(): Promise<string> {
     const timestamp = Date.now().toString().slice(-6);
@@ -570,7 +559,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Daily revenue summary methods
-  async createOrUpdateDailyRevenueSummary(summary: InsertDailyRevenueSummary): Promise<DailyRevenueSummary> {
+  async createOrUpdateDailyRevenueSummary(summary: any): Promise<DailyRevenueSummary> {
     const existing = await this.getDailyRevenueSummary(summary.date);
 
     if (existing) {
@@ -629,228 +618,31 @@ export class DatabaseStorage implements IStorage {
   async performDailyReset(): Promise<void> {
     const today = this.getCurrentEATDate();
 
-    // Get annual stats instead of super admin revenue
-    const shopsList = await this.getShops();
-    let totalGames = 0;
-
     // Create or update daily summary with simplified stats
     await this.createOrUpdateDailyRevenueSummary({
       date: today,
-      totalSuperAdminRevenue: "0.00",
       totalAdminRevenue: "0.00",
       totalGamesPlayed: 0,
       totalPlayersRegistered: 0,
     });
   }
 
-
-  // Employee profit margin methods
-  async setEmployeeProfitMargin(margin: InsertEmployeeProfitMargin): Promise<EmployeeProfitMargin> {
-    const [result] = await db
-      .insert(employeeProfitMargins)
-      .values(margin)
-      .onConflictDoUpdate({
-        target: [employeeProfitMargins.employeeId, employeeProfitMargins.shopId],
-        set: { profitMargin: margin.profitMargin }
-      })
-      .returning();
-    return result;
-  }
-
-  async getEmployeeProfitMarginsByAdmin(adminId: number): Promise<any[]> {
-    const result = await db
-      .select({
-        id: employeeProfitMargins.id,
-        employeeId: employeeProfitMargins.employeeId,
-        shopId: employeeProfitMargins.shopId,
-        profitMargin: employeeProfitMargins.profitMargin,
-        employeeName: users.name,
-        employeeUsername: users.username,
-        shopName: shops.name
-      })
-      .from(employeeProfitMargins)
-      .leftJoin(users, eq(employeeProfitMargins.employeeId, users.id))
-      .leftJoin(shops, eq(employeeProfitMargins.shopId, shops.id))
-      .where(eq(shops.adminId, adminId));
-    return result;
-  }
-
-  async updateEmployeeProfitMargin(marginId: number, profitMargin: string, adminId: number): Promise<EmployeeProfitMargin> {
-    // Verify ownership through shop admin
-    const [result] = await db
-      .update(employeeProfitMargins)
-      .set({ profitMargin })
-      .from(shops)
-      .where(
-        and(
-          eq(employeeProfitMargins.id, marginId),
-          eq(employeeProfitMargins.shopId, shops.id),
-          eq(shops.adminId, adminId)
-        )
-      )
-      .returning();
-    return result;
-  }
-
-  async updateUserPassword(userId: number, hashedPassword: string): Promise<void> {
-    await db
-      .update(users)
-      .set({ password: hashedPassword })
-      .where(eq(users.id, userId));
-  }
-
-  // Admin management methods for Super Admin
-  async getAdminUsers(): Promise<Array<User & { shopName?: string }>> {
-    const adminUsers = await db.select({
-      id: users.id,
-      username: users.username,
-      password: users.password,
-      role: users.role,
-      name: users.name,
-      email: users.email,
-      isBlocked: users.isBlocked,
-      shopId: users.shopId,
-      creditBalance: users.creditBalance,
-      accountNumber: users.accountNumber,
-      referredBy: users.referredBy,
-      createdAt: users.createdAt,
-      shopName: shops.name,
-    })
-      .from(users)
-      .leftJoin(shops, eq(users.shopId, shops.id))
-      .where(eq(users.role, 'admin'))
-      .orderBy(desc(users.createdAt));
-
-    return adminUsers;
-  }
-
-  async createAdminUser(adminData: any): Promise<User> {
-    const accountNumber = await this.generateAccountNumber();
-
-    // Create shop first with auto-generated ID
-    const [newShop] = await db.insert(shops).values({
-      name: adminData.shopName,
-      profitMargin: "20.00",
-      superAdminCommission: adminData.commissionRate || "15.00",
-      referralCommission: "0.00",
-      isBlocked: false,
-      totalRevenue: "0.00"
-    }).returning();
-
-    // Create admin and link to shop
-    const [newAdmin] = await db.insert(users).values({
-      username: adminData.username,
-      password: adminData.password, // Should be hashed in real implementation
-      role: 'admin',
-      name: adminData.name,
-      email: adminData.email || `${adminData.username}@shop.local`,
-      shopId: newShop.id,
-      balance: adminData.initialCredit || "0.00",
-      accountNumber,
-      isBlocked: false,
-    }).returning();
-
-    // Update shop to link back to admin
-    await db.update(shops)
-      .set({ adminId: newAdmin.id })
-      .where(eq(shops.id, newShop.id));
-
-    return { ...newAdmin, shopName: newShop.name };
-  }
-
-  // Block/unblock employees based on admin status
-  async blockEmployeesByAdmin(adminId: number): Promise<void> {
-    // Get the admin's shop first
-    const admin = await this.getUser(adminId);
-    if (!admin || !admin.shopId) return;
-
-    // Block all employees in this shop
-    await db.update(users)
-      .set({ isBlocked: true })
-      .where(and(
-        eq(users.shopId, admin.shopId),
-        eq(users.role, 'employee')
-      ));
-  }
-
-  async unblockEmployeesByAdmin(adminId: number): Promise<void> {
-    // Get the admin's shop first
-    const admin = await this.getUser(adminId);
-    if (!admin || !admin.shopId) return;
-
-    // Unblock all employees in this shop
-    await db.update(users)
-      .set({ isBlocked: false })
-      .where(and(
-        eq(users.shopId, admin.shopId),
-        eq(users.role, 'employee')
-      ));
-  }
-
-  // Custom cartela methods implementation
-  async getCustomCartelas(shopId: number): Promise<CustomCartela[]> {
-    return await db.select().from(customCartelas)
-      .where(eq(customCartelas.shopId, shopId))
-      .orderBy(customCartelas.cartelaNumber);
-  }
-
-  async getCustomCartela(id: number): Promise<CustomCartela | undefined> {
-    const [cartela] = await db.select().from(customCartelas).where(eq(customCartelas.id, id));
-    return cartela;
-  }
-
   async getCartelaByNumber(shopId: number, cartelaNumber: number): Promise<any | null> {
-    // First check cartelas table (where new cartelas are added)
-    const cartelasResults = await db.select().from(cartelas).where(
+    const [cartela] = await db.select().from(cartelas).where(
       and(eq(cartelas.shopId, shopId), eq(cartelas.cartelaNumber, cartelaNumber))
     ).limit(1);
 
-    if (cartelasResults.length > 0) {
-      const cartela = cartelasResults[0];
-      const parsedPattern = typeof cartela.pattern === 'string' ? JSON.parse(cartela.pattern) : cartela.pattern;
-      return {
-        ...cartela,
-        pattern: parsedPattern,
-        numbers: Array.isArray(parsedPattern) ? parsedPattern.flat() : [],
-      };
-    }
+    if (!cartela) return null;
 
-    // Then check customCartelas table as fallback
-    const customResults = await db.select().from(customCartelas).where(
-      and(eq(customCartelas.shopId, shopId), eq(customCartelas.cartelaNumber, cartelaNumber))
-    ).limit(1);
-
-    if (customResults.length === 0) return null;
-
-    const cartela = customResults[0];
+    const parsedPattern = typeof cartela.pattern === 'string' ? JSON.parse(cartela.pattern) : cartela.pattern;
     return {
       ...cartela,
-      pattern: typeof cartela.pattern === 'string' ? JSON.parse(cartela.pattern) : cartela.pattern,
-      numbers: cartela.pattern.flat(),
+      pattern: parsedPattern,
+      numbers: Array.isArray(parsedPattern) ? parsedPattern.flat() : [],
     };
   }
 
-  async createCustomCartela(cartela: InsertCustomCartela): Promise<CustomCartela> {
-    const [newCartela] = await db.insert(customCartelas).values(cartela).returning();
-    return newCartela;
-  }
-
-  async updateCustomCartela(id: number, updates: Partial<InsertCustomCartela>): Promise<CustomCartela | undefined> {
-    const [updatedCartela] = await db.update(customCartelas)
-      .set(updates)
-      .where(eq(customCartelas.id, id))
-      .returning();
-    return updatedCartela;
-  }
-
-  async deleteCustomCartela(id: number): Promise<boolean> {
-    const result = await db.delete(customCartelas).where(eq(customCartelas.id, id));
-    return result.rowCount > 0;
-  }
-
-
-
-  async resetShopCartelas(shopId: number): Promise<void> {
+  async resetCartelasForShop(shopId: number): Promise<void> {
     await db.update(cartelas)
       .set({
         isBooked: false,
@@ -861,50 +653,26 @@ export class DatabaseStorage implements IStorage {
       .where(eq(cartelas.shopId, shopId));
   }
 
-  async markCartelaByEmployee(cartelaId: number, employeeId: number): Promise<void> {
-    // Check if cartela is already marked (isBooked)
-    const [existingCartela] = await db.select().from(cartelas).where(eq(cartelas.id, cartelaId));
+  async getMasterFloat(shopId?: number): Promise<string> {
+    let query = db.select({
+      total: sum(users.balance).as('total')
+    }).from(users);
 
-    if (existingCartela && existingCartela.isBooked) {
-      throw new Error('Cartela is already marked');
+    if (shopId) {
+      query = query.where(eq(users.shopId, shopId));
     }
 
-    await db.update(cartelas)
-      .set({
-        bookedBy: employeeId,
-        isBooked: true,
-        updatedAt: new Date()
-      })
-      .where(eq(cartelas.id, cartelaId));
+    const [result] = await query;
+    return result.total || "0";
   }
 
-  async unmarkCartelaByEmployee(cartelaId: number, employeeId: number): Promise<void> {
-    await db.update(cartelas)
-      .set({
-        bookedBy: null,
-        isBooked: false,
-        updatedAt: new Date()
-      })
-      .where(and(
-        eq(cartelas.id, cartelaId),
-        eq(cartelas.bookedBy, employeeId)
-      ));
-  }
-
-  async resetCartelasForShop(shopId: number): Promise<void> {
-    console.log(`🔄 RESET: Clearing all cartela selections for shop ${shopId}`);
-
-    // Clear all cartela bookings and selections for this shop
-    await db.update(cartelas)
-      .set({
-        isBooked: false,
-        bookedBy: null,
-        collectorId: null,
-        updatedAt: new Date()
-      })
-      .where(eq(cartelas.shopId, shopId));
-
-    console.log(`✅ RESET: All cartela selections cleared for shop ${shopId}`);
+  async getAllUserBalances(): Promise<{ userId: number; username: string; balance: string; role: string }[]> {
+    return await db.select({
+      userId: users.id,
+      username: users.username,
+      balance: users.balance,
+      role: users.role
+    }).from(users);
   }
 }
 

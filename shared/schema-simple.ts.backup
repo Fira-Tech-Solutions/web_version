@@ -1,7 +1,5 @@
-import { sqliteTable, text, integer, real, unique } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, blob } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod";
 
 export const users = sqliteTable("users", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -11,26 +9,26 @@ export const users = sqliteTable("users", {
   name: text("name").notNull(),
   email: text("email"),
   accountNumber: text("account_number").unique(),
-  balance: real("balance").default(0),
-  isBlocked: integer("is_blocked", { mode: "boolean" }).default(false),
+  balance: decimal("balance", { precision: 12, scale: 2 }).default("0.00"),
+  isBlocked: boolean("is_blocked").default(false),
   shopId: integer("shop_id").references(() => shops.id, { onDelete: "set null" }),
   creditBalance: real("credit_balance").default(0),
   referredBy: integer("referred_by"),
   commissionRate: real("commission_rate").default(0),
-  createdAt: integer("created_at", { mode: "timestamp" }).default(Date.now),
+  createdAt: datetime("created_at").defaultNow(),
 });
 
 export const shops = sqliteTable("shops", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   adminId: integer("admin_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  profitMargin: real("profit_margin").default(20),
-  balance: real("balance").default(0),
-  isBlocked: integer("is_blocked", { mode: "boolean" }).default(false),
-  totalRevenue: real("total_revenue").default(0),
+  profitMargin: decimal("profit_margin", { precision: 5, scale: 2 }).default("20.00"),
+  balance: decimal("balance", { precision: 12, scale: 2 }).default("0.00"),
+  isBlocked: boolean("is_blocked").default(false),
+  totalRevenue: decimal("total_revenue", { precision: 10, scale: 2 }).default("0.00"),
   totalGames: integer("total_games").default(0),
   totalPlayers: integer("total_players").default(0),
-  createdAt: integer("created_at", { mode: "timestamp" }).default(Date.now),
+  createdAt: datetime("created_at").defaultNow(),
 });
 
 export const games = sqliteTable("games", {
@@ -38,14 +36,14 @@ export const games = sqliteTable("games", {
   shopId: integer("shop_id").notNull().references(() => shops.id, { onDelete: "cascade" }),
   employeeId: integer("employee_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   status: text("status").notNull(), // 'waiting', 'active', 'completed', 'paused'
-  prizePool: real("prize_pool").default(0),
-  entryFee: real("entry_fee").notNull(),
+  prizePool: decimal("prize_pool", { precision: 10, scale: 2 }).default("0.00"),
+  entryFee: decimal("entry_fee", { precision: 10, scale: 2 }).notNull(),
   calledNumbers: text("called_numbers").default("[]"),
   winnerId: integer("winner_id").references(() => gamePlayers.id, { onDelete: "set null" }),
-  startedAt: integer("started_at", { mode: "timestamp" }),
-  completedAt: integer("completed_at", { mode: "timestamp" }),
-  isPaused: integer("is_paused", { mode: "boolean" }).default(false),
-  createdAt: integer("created_at", { mode: "timestamp" }).default(Date.now),
+  startedAt: datetime("started_at"),
+  completedAt: datetime("completed_at"),
+  isPaused: boolean("is_paused").default(false),
+  createdAt: datetime("created_at").defaultNow(),
 });
 
 export const gamePlayers = sqliteTable("game_players", {
@@ -53,9 +51,9 @@ export const gamePlayers = sqliteTable("game_players", {
   gameId: integer("game_id").notNull().references(() => games.id, { onDelete: "cascade" }),
   playerName: text("player_name").notNull(),
   cartelaNumbers: text("cartela_numbers").notNull(),
-  entryFee: real("entry_fee").notNull(),
-  isWinner: integer("is_winner", { mode: "boolean" }).default(false),
-  registeredAt: integer("registered_at", { mode: "timestamp" }).default(Date.now),
+  entryFee: decimal("entry_fee", { precision: 10, scale: 2 }).notNull(),
+  isWinner: boolean("is_winner").default(false),
+  registeredAt: datetime("registered_at").defaultNow(),
 });
 
 export const transactions = sqliteTable("transactions", {
@@ -64,10 +62,10 @@ export const transactions = sqliteTable("transactions", {
   shopId: integer("shop_id").references(() => shops.id, { onDelete: "cascade" }),
   employeeId: integer("employee_id").references(() => users.id, { onDelete: "cascade" }),
   adminId: integer("admin_id").references(() => users.id, { onDelete: "cascade" }),
-  amount: real("amount").notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   type: text("type").notNull(), // 'entry_fee', 'prize_payout', 'admin_profit', 'credit_load'
   description: text("description"),
-  createdAt: integer("created_at", { mode: "timestamp" }).default(Date.now),
+  createdAt: datetime("created_at").defaultNow(),
 });
 
 export const gameHistory = sqliteTable("game_history", {
@@ -75,13 +73,13 @@ export const gameHistory = sqliteTable("game_history", {
   gameId: integer("game_id").notNull().references(() => games.id, { onDelete: "cascade" }),
   shopId: integer("shop_id").notNull().references(() => shops.id, { onDelete: "cascade" }),
   employeeId: integer("employee_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  totalCollected: real("total_collected").notNull(),
-  prizeAmount: real("prize_amount").notNull(),
-  adminProfit: real("admin_profit").notNull(),
+  totalCollected: decimal("total_collected", { precision: 10, scale: 2 }).notNull(),
+  prizeAmount: decimal("prize_amount", { precision: 10, scale: 2 }).notNull(),
+  adminProfit: decimal("admin_profit", { precision: 10, scale: 2 }).notNull(),
   playerCount: integer("player_count").notNull(),
   winnerName: text("winner_name"),
   winningCartela: text("winning_cartela"),
-  completedAt: integer("completed_at", { mode: "timestamp" }).default(Date.now),
+  completedAt: datetime("completed_at").defaultNow(),
 });
 
 export const cartelas = sqliteTable("cartelas", {
@@ -91,25 +89,25 @@ export const cartelas = sqliteTable("cartelas", {
   cartelaNumber: integer("cartela_number").notNull(),
   name: text("name").notNull(),
   pattern: text("pattern").notNull(),
-  isHardcoded: integer("is_hardcoded", { mode: "boolean" }).default(false),
-  isActive: integer("is_active", { mode: "boolean" }).default(true),
-  isBooked: integer("is_booked", { mode: "boolean" }).default(false),
+  isHardcoded: boolean("is_hardcoded").default(false),
+  isActive: boolean("is_active").default(true),
+  isBooked: boolean("is_booked").default(false),
   bookedBy: integer("booked_by").references(() => users.id, { onDelete: "set null" }),
   gameId: integer("game_id").references(() => games.id, { onDelete: "set null" }),
-  createdAt: integer("created_at", { mode: "timestamp" }).default(Date.now),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).default(Date.now),
+  createdAt: datetime("created_at").defaultNow(),
+  updatedAt: datetime("updated_at").defaultNow(),
 }, (table) => ({
-  shopCartelaUnique: unique().on(table.shopId, table.cartelaNumber),
+  shopCartelaUnique: table.shopId.unique(),
 }));
 
 export const dailyRevenueSummary = sqliteTable("daily_revenue_summary", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   date: text("date").notNull().unique(), // YYYY-MM-DD format
-  totalAdminRevenue: real("total_admin_revenue").default(0),
+  totalAdminRevenue: decimal("total_admin_revenue", { precision: 12, scale: 2 }).default("0.00"),
   totalGamesPlayed: integer("total_games_played").default(0),
   totalPlayersRegistered: integer("total_players_registered").default(0),
-  createdAt: integer("created_at", { mode: "timestamp" }).default(Date.now),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).default(Date.now),
+  createdAt: datetime("created_at").defaultNow(),
+  updatedAt: datetime("updated_at").defaultNow(),
 });
 
 // Relations
@@ -210,74 +208,13 @@ export const cartelasRelations = relations(cartelas, ({ one }) => ({
   }),
 }));
 
-// Insert schemas
-export const insertUserSchema = createInsertSchema(users).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertShopSchema = createInsertSchema(shops).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertGameSchema = createInsertSchema(games).omit({
-  id: true,
-  createdAt: true,
-  startedAt: true,
-  completedAt: true,
-});
-
-export const insertGamePlayerSchema = createInsertSchema(gamePlayers).omit({
-  id: true,
-  registeredAt: true,
-});
-
-export const insertTransactionSchema = createInsertSchema(transactions, {
-  amount: z.number(),
-}).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertGameHistorySchema = createInsertSchema(gameHistory).omit({
-  id: true,
-});
-
-export const insertCartelaSchema = createInsertSchema(cartelas).omit({
-  id: true,
-});
-
-export const insertCustomCartelaSchema = createInsertSchema(cartelas).omit({
-  id: true,
-});
-
-export const insertDailyRevenueSummarySchema = createInsertSchema(dailyRevenueSummary, {
-  totalAdminRevenue: z.number(),
-  totalGamesPlayed: z.number(),
-  totalPlayersRegistered: z.number(),
-}).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
 // Types
 export type User = typeof users.$inferSelect;
-export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Shop = typeof shops.$inferSelect;
-export type InsertShop = z.infer<typeof insertShopSchema>;
 export type Game = typeof games.$inferSelect;
-export type InsertGame = z.infer<typeof insertGameSchema>;
 export type GamePlayer = typeof gamePlayers.$inferSelect;
-export type InsertGamePlayer = z.infer<typeof insertGamePlayerSchema>;
 export type Transaction = typeof transactions.$inferSelect;
-export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 export type GameHistory = typeof gameHistory.$inferSelect;
-export type InsertGameHistory = z.infer<typeof insertGameHistorySchema>;
 export type Cartela = typeof cartelas.$inferSelect;
-export type InsertCartela = z.infer<typeof insertCartelaSchema>;
-export type CustomCartela = typeof cartelas.$inferSelect;
-export type InsertCustomCartela = z.infer<typeof insertCustomCartelaSchema>;
 export type DailyRevenueSummary = typeof dailyRevenueSummary.$inferSelect;
-export type InsertDailyRevenueSummary = z.infer<typeof insertDailyRevenueSummarySchema>;
+

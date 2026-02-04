@@ -7,11 +7,8 @@ import LoginPage from "./pages/login-page";
 import RegistrationPage from "./pages/registration-page";
 import TestLogin from "./pages/test-login";
 import SimpleAdminDashboard from "./pages/simple-admin-dashboard";
-import SuperAdminDashboard from "./pages/super-admin-dashboard";
 import EmployeeDashboard from "./pages/employee-dashboard";
 import AdminEmployeeManagement from "./pages/admin-employee-management";
-
-import MongoDBTest from "./pages/MongoDBTest";
 
 function AppRouter() {
   const { user } = useAuth();
@@ -38,9 +35,6 @@ function AppRouter() {
       <Route path="/test-login" component={TestLogin} />
 
       {/* Dashboard Routes */}
-      <Route path="/dashboard/super-admin">
-        <SuperAdminDashboard onLogout={handleLogout} />
-      </Route>
       <Route path="/dashboard/admin">
         <SimpleAdminDashboard onLogout={handleLogout} />
       </Route>
@@ -50,10 +44,6 @@ function AppRouter() {
       <Route path="/dashboard/employee">
         <EmployeeDashboard onLogout={handleLogout} />
       </Route>
-
-
-      {/* MongoDB Test Page */}
-      <Route path="/mongodb-test" component={MongoDBTest} />
 
       {/* Legacy Routes for backward compatibility */}
       <Route path="/admin">
