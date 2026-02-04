@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from "react";
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Upload, X, Settings, Trophy } from "lucide-react";
+import { Upload, X, Settings, Trophy, Eye, EyeOff } from "lucide-react";
 import { customBingoVoice } from "@/lib/custom-voice-synthesis";
 import AudioControls from "@/components/audio-controls";
 import WinnerCheckPopup from "@/components/winner-check-popup";
@@ -35,7 +36,11 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const [rechargeFile, setRechargeFile] = useState<File | null>(null);
   const [showAudioControls, setShowAudioControls] = useState(false);
   const [showWinnerCheck, setShowWinnerCheck] = useState(false);
+  const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
+  const [expandedCard, setExpandedCard] = useState<number | null>(null);
   const [isCallingNumber, setIsCallingNumber] = useState(false);
+  const [isAutoCalling, setIsAutoCalling] = useState(false);
+  const autoCallInterval = useRef<NodeJS.Timeout | null>(null);
 
   // Active game query
   const { data: activeGame } = useQuery({
@@ -170,7 +175,11 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     const availableNumbers = Array.from({ length: 75 }, (_, i) => i + 1)
       .filter(n => !calledNumbers.includes(n));
 
-    if (availableNumbers.length === 0) return;
+    if (availableNumbers.length === 0) {
+      // Stop auto-calling if all numbers are called
+      stopAutoCalling();
+      return;
+    }
 
     const randomIndex = Math.floor(Math.random() * availableNumbers.length);
     const newNumber = availableNumbers[randomIndex];
@@ -197,6 +206,57 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       setIsCallingNumber(false);
     }
   };
+
+  // Start auto-calling
+  const startAutoCalling = () => {
+    if (isAutoCalling) return;
+    
+    setIsAutoCalling(true);
+    
+    // Call first number immediately
+    handleCallNumber();
+    
+    // Then call numbers at intervals based on speed
+    const intervalMs = Math.max(1000, 11000 - (speed * 1000)); // Speed 1=10s, 10=1s
+    autoCallInterval.current = setInterval(() => {
+      handleCallNumber();
+    }, intervalMs);
+  };
+
+  // Stop auto-calling
+  const stopAutoCalling = () => {
+    setIsAutoCalling(false);
+    if (autoCallInterval.current) {
+      clearInterval(autoCallInterval.current);
+      autoCallInterval.current = null;
+    }
+  };
+
+  // Toggle auto-calling
+  const toggleAutoCalling = () => {
+    if (isAutoCalling) {
+      stopAutoCalling();
+    } else {
+      startAutoCalling();
+    }
+  };
+
+  // Clean up interval on component unmount
+  useEffect(() => {
+    return () => {
+      if (autoCallInterval.current) {
+        clearInterval(autoCallInterval.current);
+      }
+    };
+  }, []);
+
+  // Update interval when speed changes
+  useEffect(() => {
+    if (isAutoCalling) {
+      stopAutoCalling();
+      startAutoCalling();
+    }
+  }, [speed]);
 
   // Check winner handler
   const handleCheckWinner = async (cartelaNumber: number): Promise<{ isWinner: boolean; pattern?: string }> => {
@@ -254,7 +314,103 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     }
   };
 
-  // Check card handler for manual card checking
+  // Generate bingo card numbers for display
+  const generateCardNumbers = (cardNum: number): number[][] => {
+    // Use a deterministic seed based on card number for consistent display
+    const seed = cardNum * 12345;
+    const random = (min: number, max: number) => {
+      const x = Math.sin(seed + min + max) * 10000;
+      return Math.floor((x - Math.floor(x)) * (max - min + 1)) + min;
+    };
+
+    const card: number[][] = [];
+    
+    // B column (1-15)
+    const b = Array.from({ length: 5 }, () => random(1, 15));
+    // I column (16-30)
+    const i = Array.from({ length: 5 }, () => random(16, 30));
+    // N column (31-45) with free space in middle
+    const n = Array.from({ length: 2 }, () => random(31, 45));
+    n.push(0); // Free space
+    n.push(...Array.from({ length: 2 }, () => random(31, 45)));
+    // G column (46-60)
+    const g = Array.from({ length: 5 }, () => random(46, 60));
+    // O column (61-75)
+    const o = Array.from({ length: 5 }, () => random(61, 75));
+
+    card.push(b, i, n, g, o);
+    return card;
+  };
+
+  // Render bingo card component
+  const renderBingoCard = (cardNum: number, isSelected: boolean) => {
+    const cardNumbers = generateCardNumbers(cardNum);
+    
+    return (
+      <div className={`relative transition-all duration-200 ${isSelected ? 'scale-105' : 'scale-100'}`}>
+        <div
+          className={`p-3 rounded-lg border-2 transition-all ${isSelected
+              ? 'border-blue-600 bg-blue-50 shadow-lg'
+              : 'border-gray-300 bg-white hover:border-blue-400 hover:shadow-md'
+            }`}
+        >
+          {/* Card Header with Number and Eye Icon */}
+          <div className="flex justify-between items-center mb-2">
+            <div className="font-bold text-lg text-gray-700">Card #{cardNum}</div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpandedCard(cardNum);
+              }}
+              className="p-1 rounded hover:bg-gray-200 transition-colors"
+              title="Show card layout"
+            >
+              <Eye className="w-4 h-4 text-gray-600" />
+            </button>
+          </div>
+
+          {/* Compact View - Simple card number display */}
+          <div
+            onClick={() => {
+              const newSelected = new Set(selectedCards);
+              if (isSelected) {
+                newSelected.delete(cardNum);
+              } else {
+                newSelected.add(cardNum);
+              }
+              setSelectedCards(newSelected);
+            }}
+            className="cursor-pointer"
+          >
+            <div className={`p-4 rounded-lg border-2 transition-all ${
+              isSelected
+                ? 'border-blue-600 bg-blue-50 shadow-lg'
+                : 'border-gray-300 bg-white hover:border-blue-400 hover:shadow-md'
+            }`}>
+              <div className="flex justify-between items-center">
+                <div className="font-bold text-lg text-gray-700">Card #{cardNum}</div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpandedCard(cardNum);
+                  }}
+                  className="p-1 rounded hover:bg-gray-200 transition-colors"
+                  title="Show card layout"
+                >
+                  <Eye className="w-4 h-4 text-gray-600" />
+                </button>
+              </div>
+              {isSelected && (
+                <div className="mt-2 bg-blue-600 text-white rounded px-2 py-1 text-center text-xs font-bold">
+                  SELECTED
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
   const handleCheckCard = () => {
     if (!checkCardInput) {
       toast({
@@ -527,29 +683,10 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                   </label>
                 </div>
 
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
                   {Array.from({ length: 100 }, (_, i) => i + 1).map((cardNum) => {
                     const isSelected = selectedCards.has(cardNum);
-                    return (
-                      <button
-                        key={cardNum}
-                        onClick={() => {
-                          const newSelected = new Set(selectedCards);
-                          if (isSelected) {
-                            newSelected.delete(cardNum);
-                          } else {
-                            newSelected.add(cardNum);
-                          }
-                          setSelectedCards(newSelected);
-                        }}
-                        className={`p-4 rounded-lg border-2 transition ${isSelected
-                            ? 'border-blue-600 bg-blue-50'
-                            : 'border-gray-300 bg-white hover:border-blue-400'
-                          }`}
-                      >
-                        <div className="font-bold text-lg">Card #{cardNum}</div>
-                      </button>
-                    );
+                    return renderBingoCard(cardNum, isSelected);
                   })}
                 </div>
               </div>
@@ -560,7 +697,18 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
                 <div className="mb-4">
                   <div className="text-sm text-gray-600 mb-2">Selected Cards: {selectedCards.size}</div>
-                  <div className="max-h-40 overflow-y-auto bg-white border border-gray-300 rounded p-2">
+                  
+                  {/* Show preview of first selected card */}
+                  {selectedCards.size > 0 && (
+                    <div className="mb-4">
+                      <div className="text-xs text-gray-500 mb-1">Preview (Card #{Array.from(selectedCards)[0]}):</div>
+                      <div className="scale-90 origin-top-left">
+                        {renderBingoCard(Array.from(selectedCards)[0], true)}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="max-h-32 overflow-y-auto bg-white border border-gray-300 rounded p-2">
                     {Array.from(selectedCards).map((cardNum) => (
                       <div key={cardNum} className="flex justify-between items-center py-1">
                         <span>Card #{cardNum}</span>
@@ -740,18 +888,15 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
           {/* Control Bar */}
           <div className="bg-gray-800 rounded-lg p-4 flex items-center justify-between gap-4">
             <Button
-              onClick={handleCallNumber}
+              onClick={toggleAutoCalling}
               disabled={isCallingNumber}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 text-lg font-bold"
+              className={`${isAutoCalling ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} text-white px-8 py-3 text-lg font-bold`}
             >
-              {isCallingNumber ? "Calling..." : "Bingo"}
+              {isAutoCalling ? "Stop Calling" : "Bingo"}
             </Button>
 
             <Button
-              onClick={() => {
-                setCalledNumbers([]);
-                setCurrentNumber(null);
-              }}
+              onClick={() => setShowNewGameConfirm(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 text-lg font-bold"
             >
               New Game
@@ -835,6 +980,122 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
         onCheckWinner={handleCheckWinner}
         initialCartelaNumber={checkCardInput}
       />
+
+      {/* New Game Confirmation Dialog */}
+      {showNewGameConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full mx-4">
+            <div className="bg-red-600 text-white px-6 py-4 rounded-t-lg">
+              <h2 className="text-xl font-bold">Quit Current Game?</h2>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700 mb-6">
+                Are you sure you want to quit the current game? All progress will be lost and you will return to the game settings.
+              </p>
+              <div className="flex gap-4">
+                <Button
+                  onClick={() => {
+                    stopAutoCalling();
+                    setCalledNumbers([]);
+                    setCurrentNumber(null);
+                    setGameState('SETTING');
+                    setShowNewGameConfirm(false);
+                  }}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                >
+                  Quit
+                </Button>
+                <Button
+                  onClick={() => setShowNewGameConfirm(false)}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white"
+                >
+                  Resume
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Expanded Card Popup */}
+      {expandedCard && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full mx-4">
+            {/* Header */}
+            <div className="bg-blue-600 text-white px-6 py-4 rounded-t-lg flex justify-between items-center">
+              <h2 className="text-xl font-bold">Card #{expandedCard} Layout</h2>
+              <Button
+                onClick={() => setExpandedCard(null)}
+                variant="ghost"
+                size="sm"
+                className="text-white hover:bg-white hover:bg-opacity-20"
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+
+            {/* Card Content */}
+            <div className="p-6">
+              <div className="bg-white rounded border-2 border-gray-400 p-4 mx-auto" style={{ maxWidth: '400px' }}>
+                {/* Column Headers */}
+                <div className="grid grid-cols-5 gap-2 mb-2">
+                  {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+                    <div key={letter} className="bg-blue-600 text-white text-lg font-bold text-center py-2 rounded">
+                      {letter}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Number Grid */}
+                {generateCardNumbers(expandedCard).map((row, rowIdx) => (
+                  <div key={rowIdx} className="grid grid-cols-5 gap-2 mb-2 last:mb-0">
+                    {row.map((num, colIdx) => (
+                      <div
+                        key={colIdx}
+                        className={`text-lg font-bold text-center py-3 rounded border-2 ${
+                          num === 0 
+                            ? 'bg-yellow-400 text-black border-yellow-500' 
+                            : 'bg-white text-gray-800 border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {num === 0 ? '★' : num}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="mt-6 flex gap-4">
+                <Button
+                  onClick={() => {
+                    const newSelected = new Set(selectedCards);
+                    if (selectedCards.has(expandedCard)) {
+                      newSelected.delete(expandedCard);
+                    } else {
+                      newSelected.add(expandedCard);
+                    }
+                    setSelectedCards(newSelected);
+                  }}
+                  className={`flex-1 ${
+                    selectedCards.has(expandedCard)
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  } text-white`}
+                >
+                  {selectedCards.has(expandedCard) ? 'Deselect Card' : 'Select Card'}
+                </Button>
+                <Button
+                  onClick={() => setExpandedCard(null)}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
