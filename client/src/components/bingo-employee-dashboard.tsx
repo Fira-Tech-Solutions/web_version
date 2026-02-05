@@ -82,6 +82,48 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     refetchInterval: 5000
   });
 
+  // Update called numbers mutation
+  const updateCalledNumbersMutation = useMutation({
+    mutationFn: async ({ gameId, calledNumbers }: { gameId: number; calledNumbers: number[] }) => {
+      const response = await fetch(`/api/games/${gameId}/numbers`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ calledNumbers }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update called numbers');
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      // Refresh the active game data
+      queryClient.invalidateQueries({ queryKey: ['/api/games/active'] });
+    },
+    onError: (error) => {
+      console.error('Failed to save called numbers:', error);
+      toast({
+        title: "Warning",
+        description: "Number called but not saved to server",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Sync called numbers from backend when active game changes
+  useEffect(() => {
+    if (activeGame?.calledNumbers && Array.isArray(activeGame.calledNumbers)) {
+      const backendNumbers = activeGame.calledNumbers.map(n => typeof n === 'string' ? parseInt(n) : n);
+      setCalledNumbers(backendNumbers);
+      if (backendNumbers.length > 0) {
+        setCurrentNumber(backendNumbers[backendNumbers.length - 1]);
+      }
+    }
+  }, [activeGame]);
+
   // Shop data query
   const { data: shopData } = useQuery({
     queryKey: [`/api/shops/${user?.shopId}`],
@@ -218,15 +260,21 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       description: `${getLetterForNumber(newNumber)} ${newNumber}`
     });
 
-    // Play voice announcement in background (non-blocking)
-    try {
-      await customBingoVoice.callNumber(newNumber);
-    } catch (error) {
+    // Save to backend if there's an active game
+    if (activeGame?.id) {
+      updateCalledNumbersMutation.mutate({
+        gameId: activeGame.id,
+        calledNumbers: newCalledNumbers
+      });
+    }
+
+    // Play voice announcement immediately (non-blocking)
+    customBingoVoice.callNumber(newNumber).catch(error => {
       console.error('Error calling number:', error);
       // Voice error doesn't affect the game state
-    } finally {
-      setIsCallingNumber(false);
-    }
+    });
+    
+    setIsCallingNumber(false);
   };
 
   // Start auto-calling
@@ -269,14 +317,12 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     
     setIsShuffling(true);
     
-    // Play shuffle sound
-    try {
-      await customBingoVoice.playShuffle();
-    } catch (error) {
+    // Play shuffle sound (non-blocking)
+    customBingoVoice.playShuffle().catch(error => {
       console.warn('Error playing shuffle sound:', error);
-    }
+    });
     
-    // Stop shuffling after audio finishes (about 3 seconds)
+    // Stop shuffling after 3 seconds
     setTimeout(() => {
       setIsShuffling(false);
     }, 3000);
@@ -352,12 +398,10 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       // Force re-render
       forceUpdate({});
       
-      // Play "not registered" audio
-      try {
-        await customBingoVoice.playNotRegistered();
-      } catch (error) {
+      // Play "not registered" audio (non-blocking)
+      customBingoVoice.playNotRegistered().catch(error => {
         console.warn('Error playing not registered audio:', error);
-      }
+      });
       
       // Clear the message after 3 seconds
       setTimeout(() => {
@@ -387,15 +431,15 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     // Force re-render
     forceUpdate({});
     
-    // Play appropriate audio immediately
-    try {
-      if (result.isWinner) {
-        await customBingoVoice.announceWinner(cartelaNumber, true);
-      } else {
-        await customBingoVoice.announceWinner(cartelaNumber, false);
-      }
-    } catch (error) {
-      console.warn('Error playing audio:', error);
+    // Play appropriate audio immediately (non-blocking)
+    if (result.isWinner) {
+      customBingoVoice.announceWinner(cartelaNumber, true).catch(error => {
+        console.warn('Error playing winner audio:', error);
+      });
+    } else {
+      customBingoVoice.announceWinner(cartelaNumber, false).catch(error => {
+        console.warn('Error playing not winner audio:', error);
+      });
     }
   };
 
@@ -410,23 +454,16 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       return;
     }
 
-    try {
-      // Announce game start
-      await customBingoVoice.announceGameStart();
-      setGameState('PLAYING');
-      toast({
-        title: "Game Started",
-        description: `Playing with ${selectedCards.size} cards`
-      });
-    } catch (error) {
+    // Announce game start (non-blocking)
+    customBingoVoice.announceGameStart().catch(error => {
       console.error('Error announcing game start:', error);
-      // Still start the game even if voice fails
-      setGameState('PLAYING');
-      toast({
-        title: "Game Started",
-        description: `Playing with ${selectedCards.size} cards`
-      });
-    }
+    });
+    
+    setGameState('PLAYING');
+    toast({
+      title: "Game Started",
+      description: `Playing with ${selectedCards.size} cards`
+    });
   };
 
   // Generate bingo card numbers for display

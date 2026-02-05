@@ -68,7 +68,7 @@ export class CustomBingoVoiceSynthesis {
   // Play audio file
   private playAudioFile(filePath: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.stop(); // Stop any currently playing audio
+      this.stop(); // Stop any currently playing audio immediately
 
       const audio = new Audio(filePath);
       audio.volume = this.volume;
