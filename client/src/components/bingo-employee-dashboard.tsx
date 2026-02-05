@@ -386,8 +386,8 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
             className="cursor-pointer"
           >
             <div className={`p-4 rounded-lg border-2 transition-all ${isSelected
-                ? 'border-blue-600 bg-blue-50 shadow-lg'
-                : 'border-gray-300 bg-white hover:border-blue-400 hover:shadow-md'
+              ? 'border-blue-600 bg-blue-50 shadow-lg'
+              : 'border-gray-300 bg-white hover:border-blue-400 hover:shadow-md'
               }`}>
               <div className="flex justify-between items-center">
                 <div className="font-bold text-lg text-gray-700">Card #{cardNum}</div>
@@ -731,8 +731,8 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                             ${isBeingEdited
                               ? 'bg-orange-600 text-white border-orange-400 shadow-lg shadow-orange-400/50 scale-110 animate-pulse'
                               : isSelected
-                              ? 'bg-green-600 text-white border-yellow-400 shadow-lg shadow-green-400/50 scale-110'
-                              : 'bg-blue-700 text-white border-yellow-600 hover:bg-blue-600 hover:border-yellow-400 hover:scale-105'
+                                ? 'bg-green-600 text-white border-yellow-400 shadow-lg shadow-green-400/50 scale-110'
+                                : 'bg-blue-700 text-white border-yellow-600 hover:bg-blue-600 hover:border-yellow-400 hover:scale-105'
                             }
                           `}
                           title={isEditMode ? `Edit Card #${cardNum}` : `Card #${cardNum}`}
@@ -970,20 +970,20 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
       {/* Main Game Floor */}
       {gameState === 'PLAYING' && (
-        <div className="p-4">
+        <div className="h-screen flex flex-col p-4 overflow-hidden">
           {/* Top Row Dashboard */}
-          <div className="grid grid-cols-4 gap-4 mb-4">
+          <div className="grid grid-cols-4 gap-2 mb-2">
             {/* Large Number Ball */}
-            <div className="bg-gray-800 rounded-lg p-6 flex items-center justify-center">
-              <div className={`w-48 h-48 rounded-full bg-gradient-to-br ${currentNumber ? getBallGradient(currentNumber) : 'from-gray-600 to-gray-800'
+            <div className="bg-gray-800 rounded-lg p-3 flex items-center justify-center">
+              <div className={`w-32 h-32 rounded-full bg-gradient-to-br ${currentNumber ? getBallGradient(currentNumber) : 'from-gray-600 to-gray-800'
                 } flex items-center justify-center shadow-2xl border-4 border-white`}>
                 <div className="text-center">
                   {currentNumber && (
                     <>
-                      <div className="text-6xl font-bold text-white">
+                      <div className="text-4xl font-bold text-white">
                         {currentNumber}
                       </div>
-                      <div className="text-2xl font-bold text-white mt-2">
+                      <div className="text-xl font-bold text-white mt-1">
                         {getLetterForNumber(currentNumber)}
                       </div>
                     </>
@@ -993,7 +993,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
             </div>
 
             {/* 5x5 Pattern Preview */}
-            <div className="bg-gray-800 rounded-lg p-4">
+            <div className="bg-gray-800 rounded-lg p-2">
               <div className="grid grid-cols-5 gap-2 mb-2">
                 <div className="font-bold text-blue-900">B</div>
                 <div className="font-bold text-blue-900">I</div>
@@ -1021,17 +1021,40 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
             </div>
 
             {/* Recent 5 Numbers */}
-            <div className="bg-blue-900 rounded-lg p-4">
+            <div className="bg-blue-900 rounded-lg p-2">
               <h3 className="text-xl font-bold mb-2 text-center">Recent 5 Numbers</h3>
-              <div className="flex justify-center gap-2 mb-4">
-                {calledNumbers.slice(-5).map((num, idx) => (
-                  <div
-                    key={idx}
-                    className={`w-16 h-16 rounded-full bg-gradient-to-br ${getBallGradient(num)} flex items-center justify-center shadow-lg`}
-                  >
-                    <span className="text-white font-bold text-xl">{num}</span>
-                  </div>
-                ))}
+              <div className="flex justify-center gap-2 mb-4 relative h-16">
+                {Array.from({ length: 5 }).map((_, slotIndex) => {
+                  // Get last 5 numbers in reverse order (newest first)
+                  const recentNumbers = calledNumbers.slice(-5).reverse();
+                  const num = recentNumbers[slotIndex];
+                  const isNewest = slotIndex === 0 && num !== undefined;
+                  
+                  return (
+                    <div
+                      key={`slot-${slotIndex}`}
+                      className="relative w-16 h-16"
+                    >
+                      <div
+                        key={num !== undefined ? `num-${num}` : `empty-${slotIndex}`}
+                        className={`absolute inset-0 w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all duration-500 ${
+                          num !== undefined
+                            ? `bg-gradient-to-br ${getBallGradient(num)}`
+                            : 'bg-gray-700 border-2 border-gray-600'
+                        }`}
+                        style={{
+                          animation: isNewest ? 'slideInFromLeft 0.5s ease-out' : 'none'
+                        }}
+                      >
+                        {num !== undefined ? (
+                          <span className="text-white font-bold text-xl">{num}</span>
+                        ) : (
+                          <span className="text-gray-500 font-bold text-2xl">?</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
               <div className="text-center">
                 <div className="inline-block bg-purple-600 rounded-full px-4 py-2 text-white font-bold">
@@ -1039,9 +1062,24 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                 </div>
               </div>
             </div>
+            <style>{`
+              @keyframes slideInFromLeft {
+                0% {
+                  transform: translateX(-100px) scale(0.5);
+                  opacity: 0;
+                }
+                50% {
+                  transform: translateX(-20px) scale(1.1);
+                }
+                100% {
+                  transform: translateX(0) scale(1);
+                  opacity: 1;
+                }
+              }
+            `}</style>
 
             {/* Prize Section */}
-            <div className="bg-blue-900 rounded-lg p-4 text-center">
+            <div className="bg-blue-900 rounded-lg p-2 text-center">
               <div className="text-6xl font-bold mb-2">ደረሻ</div>
               <div className="bg-blue-700 rounded-lg p-4">
                 <div className="text-5xl font-bold text-yellow-400">10</div>
@@ -1051,17 +1089,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
           </div>
 
           {/* Main 15x5 BINGO Board */}
-          <div className="bg-gray-800 rounded-lg p-4 mb-4">
-            {/* BINGO Labels */}
-            <div className="grid grid-cols-[auto_repeat(15,1fr)] gap-1 mb-2">
-              <div className="w-16"></div>
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map((num) => (
-                <div key={num} className="text-center text-white font-bold text-xl">
-                  {num}
-                </div>
-              ))}
-            </div>
-
+          <div className="bg-gray-800 rounded-lg p-2 mb-2 flex-1">
             {/* Grid Rows */}
             {['B', 'I', 'N', 'G', 'O'].map((letter, rowIdx) => (
               <div key={letter} className="grid grid-cols-[auto_repeat(15,1fr)] gap-1 mb-1">
@@ -1260,8 +1288,8 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                       <div
                         key={colIdx}
                         className={`text-lg font-bold text-center py-3 rounded border-2 ${num === 0
-                            ? 'bg-yellow-400 text-black border-yellow-500'
-                            : 'bg-white text-gray-800 border-gray-300 hover:bg-gray-50'
+                          ? 'bg-yellow-400 text-black border-yellow-500'
+                          : 'bg-white text-gray-800 border-gray-300 hover:bg-gray-50'
                           }`}
                       >
                         {num === 0 ? '★' : num}
@@ -1284,8 +1312,8 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                     setSelectedCards(newSelected);
                   }}
                   className={`flex-1 ${selectedCards.has(expandedCard)
-                      ? 'bg-red-600 hover:bg-red-700'
-                      : 'bg-blue-600 hover:bg-blue-700'
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : 'bg-blue-600 hover:bg-blue-700'
                     } text-white`}
                 >
                   {selectedCards.has(expandedCard) ? 'Deselect Card' : 'Select Card'}
