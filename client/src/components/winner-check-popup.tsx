@@ -12,6 +12,7 @@ interface WinnerCheckPopupProps {
   calledNumbers: number[];
   onCheckWinner: (cartelaNumber: number) => Promise<{ isWinner: boolean; pattern?: string }>;
   initialCartelaNumber?: string;
+  cardNumbers?: number[][];
 }
 
 export default function WinnerCheckPopup({ 
@@ -19,19 +20,87 @@ export default function WinnerCheckPopup({
   onClose, 
   calledNumbers, 
   onCheckWinner,
-  initialCartelaNumber
+  initialCartelaNumber,
+  cardNumbers: propCardNumbers
 }: WinnerCheckPopupProps) {
   const [cartelaNumber, setCartelaNumber] = useState(initialCartelaNumber || "");
   const [isChecking, setIsChecking] = useState(false);
   const [result, setResult] = useState<{ isWinner: boolean; pattern?: string } | null>(null);
+  const [displayCardNumbers, setDisplayCardNumbers] = useState<number[][] | null>(null);
 
   // Reset form when popup opens/closes
   useEffect(() => {
     if (isOpen) {
       setCartelaNumber(initialCartelaNumber || "");
       setResult(null);
+      setDisplayCardNumbers(null);
     }
   }, [isOpen, initialCartelaNumber]);
+
+  // Generate bingo card numbers for display
+  const generateCardNumbers = (cardNum: number): number[][] => {
+    // Use a deterministic seed based on card number for consistent display
+    const seed = cardNum * 12345;
+    const random = (min: number, max: number) => {
+      const x = Math.sin(seed + min + max) * 10000;
+      return Math.floor((x - Math.floor(x)) * (max - min + 1)) + min;
+    };
+
+    const card: number[][] = [];
+
+    // B column (1-15)
+    const b = Array.from({ length: 5 }, () => random(1, 15));
+    // I column (16-30)
+    const i = Array.from({ length: 5 }, () => random(16, 30));
+    // N column (31-45) with free space in middle
+    const n = Array.from({ length: 2 }, () => random(31, 45));
+    n.push(0); // Free space
+    n.push(...Array.from({ length: 2 }, () => random(31, 45)));
+    // G column (46-60)
+    const g = Array.from({ length: 5 }, () => random(46, 60));
+    // O column (61-75)
+    const o = Array.from({ length: 5 }, () => random(61, 75));
+
+    card.push(b, i, n, g, o);
+    return card;
+  };
+
+  // Generate card numbers with called number highlighting
+  const generateCardNumbersWithCalled = (cardNum: number): number[][] => {
+    const card = generateCardNumbers(cardNum);
+    
+    // Mark called numbers by making them negative (for display logic)
+    const markedCard = card.map(row => 
+      row.map(num => {
+        if (num === 0) return 0; // Free space
+        return calledNumbers.includes(num) ? -num : num;
+      })
+    );
+    
+    return markedCard;
+  };
+
+  // Helper function to get letter for number
+  const getLetterForNumber = (num: number): string => {
+    if (num >= 1 && num <= 15) return "B";
+    if (num >= 16 && num <= 30) return "I";
+    if (num >= 31 && num <= 45) return "N";
+    if (num >= 46 && num <= 60) return "G";
+    if (num >= 61 && num <= 75) return "O";
+    return "";
+  };
+
+  // Get color for BINGO letters
+  const getLetterColor = (letter: string): string => {
+    switch (letter) {
+      case "B": return "bg-blue-900 text-white";
+      case "I": return "bg-red-600 text-white";
+      case "N": return "bg-white text-black";
+      case "G": return "bg-green-600 text-white";
+      case "O": return "bg-yellow-400 text-black";
+      default: return "bg-gray-600 text-white";
+    }
+  };
 
   const handleCheck = async () => {
     const num = parseInt(cartelaNumber);
@@ -41,11 +110,21 @@ export default function WinnerCheckPopup({
 
     setIsChecking(true);
     try {
+      // Generate card numbers for display
+      const cardNums = generateCardNumbersWithCalled(num);
+      setDisplayCardNumbers(cardNums);
+      
       const checkResult = await onCheckWinner(num);
       setResult(checkResult);
       
       // Announce result with voice
-      await customBingoVoice.announceWinner(num, checkResult.isWinner);
+      if (checkResult.isWinner) {
+        // Play winner audio
+        await customBingoVoice.announceWinner(num, true);
+      } else {
+        // Play not winner audio
+        await customBingoVoice.announceWinner(num, false);
+      }
     } catch (error) {
       console.error('Error checking winner:', error);
     } finally {
@@ -137,7 +216,7 @@ export default function WinnerCheckPopup({
 
           {/* Result Display */}
           {result && (
-            <div className={`border-2 rounded-lg p-4 text-center ${
+            <div className={`border-2 rounded-lg p-4 text-center mb-4 ${
               result.isWinner 
                 ? 'bg-green-50 border-green-500' 
                 : 'bg-red-50 border-red-500'
@@ -162,6 +241,52 @@ export default function WinnerCheckPopup({
                   Pattern: {result.pattern}
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Card Layout Display */}
+          {displayCardNumbers && (
+            <div className="mt-4">
+              <h3 className="text-sm font-medium text-gray-700 mb-2 text-center">
+                Card #{cartelaNumber} Layout
+              </h3>
+              <div className="border-2 rounded-lg overflow-hidden">
+                {/* BINGO Header */}
+                <div className="grid grid-cols-5 gap-1 bg-gray-200">
+                  {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+                    <div 
+                      key={letter} 
+                      className={`text-center py-2 font-bold text-white ${getLetterColor(letter)}`}
+                    >
+                      {letter}
+                    </div>
+                  ))}
+                </div>
+                {/* Card Numbers */}
+                {displayCardNumbers.map((row, rowIndex) => (
+                  <div key={rowIndex} className="grid grid-cols-5 gap-1">
+                    {row.map((num, colIndex) => {
+                      const isCalled = num < 0;
+                      const displayNum = Math.abs(num);
+                      const isFreeSpace = num === 0;
+                      const letter = ['B', 'I', 'N', 'G', 'O'][colIndex];
+                      
+                      return (
+                        <div 
+                          key={colIndex}
+                          className={`h-10 flex items-center justify-center text-sm font-medium border ${
+                            isCalled 
+                              ? 'bg-yellow-400 text-black' 
+                              : 'bg-white text-black'
+                          } ${isFreeSpace ? 'bg-blue-100' : ''}`}
+                        >
+                          {isFreeSpace ? '★' : displayNum}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

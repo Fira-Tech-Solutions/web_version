@@ -178,6 +178,16 @@ export class CustomBingoVoiceSynthesis {
     }
   }
 
+  // Play not registered sound
+  async playNotRegistered(): Promise<void> {
+    try {
+      await this.playAudioFile('/voices/common/not_registered.wav');
+    } catch (error) {
+      console.warn('Error playing not registered sound:', error);
+      // Don't throw error - allow game to continue silently
+    }
+  }
+
   // Test voice with a sample number
   async testVoice(): Promise<void> {
     try {

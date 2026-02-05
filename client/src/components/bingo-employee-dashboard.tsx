@@ -43,6 +43,13 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingCard, setEditingCard] = useState<number | null>(null);
   const [viewingCard, setViewingCard] = useState<number | null>(null);
+  const [checkedCardResult, setCheckedCardResult] = useState<{
+    cartelaNumber: number;
+    isWinner: boolean;
+    pattern?: string;
+    cardNumbers: number[][];
+  } | null>(null);
+  const [isShuffling, setIsShuffling] = useState(false);
   const autoCallInterval = useRef<NodeJS.Timeout | null>(null);
 
   // Generate 15x5 grid (1-75)
@@ -248,6 +255,25 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     }
   };
 
+  // Shuffle effect - shows all 75 cards in random order
+  const handleShuffle = async () => {
+    if (isShuffling) return;
+    
+    setIsShuffling(true);
+    
+    // Play shuffle sound
+    try {
+      await customBingoVoice.playShuffle();
+    } catch (error) {
+      console.warn('Error playing shuffle sound:', error);
+    }
+    
+    // Stop shuffling after audio finishes (about 3 seconds)
+    setTimeout(() => {
+      setIsShuffling(false);
+    }, 3000);
+  };
+
   // Clean up interval on component unmount
   useEffect(() => {
     return () => {
@@ -296,6 +322,88 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     } catch (error) {
       console.error('Error checking winner:', error);
       throw error;
+    }
+  };
+
+  // Enhanced check card handler with audio feedback
+  const handleCheckCard = async () => {
+    console.log('handleCheckCard called, checkCardInput:', checkCardInput);
+    
+    if (!checkCardInput) {
+      toast({
+        title: "No Card Number",
+        description: "Please enter a cartela number to check",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const cartelaNumber = parseInt(checkCardInput);
+    if (isNaN(cartelaNumber) || cartelaNumber <= 0) {
+      toast({
+        title: "Invalid Card Number",
+        description: "Please enter a valid cartela number",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Check if cartela is registered for this game
+    const isRegistered = selectedCards.has(cartelaNumber);
+    console.log('Cartela:', cartelaNumber, 'isRegistered:', isRegistered, 'selectedCards:', Array.from(selectedCards));
+    
+    if (!isRegistered) {
+      // Clear any previous result
+      setCheckedCardResult(null);
+      
+      // Set not registered message to display in small popup
+      setCheckedCardResult({
+        cartelaNumber,
+        isWinner: false,
+        pattern: undefined,
+        cardNumbers: []
+      });
+      
+      // Play "not registered" audio
+      try {
+        await customBingoVoice.playNotRegistered();
+      } catch (error) {
+        console.warn('Error playing not registered audio:', error);
+      }
+      
+      // Clear the message after 3 seconds
+      setTimeout(() => {
+        setCheckedCardResult(null);
+      }, 3000);
+      
+      return;
+    }
+
+    // Cartela is registered - generate card layout with marked numbers
+    const cardNumbers = generateCardNumbersWithCalled(cartelaNumber);
+    console.log('Generated card numbers:', cardNumbers);
+    
+    // Check if it's a winner
+    const result = checkCardWinner(cartelaNumber);
+    console.log('Winner check result:', result);
+    
+    // Set the checked card result to display
+    setCheckedCardResult({
+      cartelaNumber,
+      isWinner: result.isWinner,
+      pattern: result.pattern,
+      cardNumbers
+    });
+    
+    // Play appropriate audio immediately
+    try {
+      if (result.isWinner) {
+        await customBingoVoice.announceWinner(cartelaNumber, true);
+      } else {
+        await customBingoVoice.announceWinner(cartelaNumber, false);
+      }
+    } catch (error) {
+      console.warn('Error playing audio:', error);
     }
   };
 
@@ -355,6 +463,85 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
     card.push(b, i, n, g, o);
     return card;
+  };
+
+  // Generate card numbers with called number highlighting
+  const generateCardNumbersWithCalled = (cardNum: number): number[][] => {
+    const card = generateCardNumbers(cardNum);
+    
+    // Mark called numbers by making them negative (for display logic)
+    const markedCard = card.map(row => 
+      row.map(num => {
+        if (num === 0) return 0; // Free space
+        return calledNumbers.includes(num) ? -num : num;
+      })
+    );
+    
+    return markedCard;
+  };
+
+  // Check if a card is a winner
+  const checkCardWinner = (cardNum: number): { isWinner: boolean; pattern?: string } => {
+    const card = generateCardNumbers(cardNum);
+    
+    // Check rows
+    for (let row = 0; row < 5; row++) {
+      let rowComplete = true;
+      for (let col = 0; col < 5; col++) {
+        const num = card[row][col];
+        if (num !== 0 && !calledNumbers.includes(num)) {
+          rowComplete = false;
+          break;
+        }
+      }
+      if (rowComplete) {
+        return { isWinner: true, pattern: `Horizontal Row ${row + 1}` };
+      }
+    }
+
+    // Check columns
+    for (let col = 0; col < 5; col++) {
+      let colComplete = true;
+      for (let row = 0; row < 5; row++) {
+        const num = card[row][col];
+        if (num !== 0 && !calledNumbers.includes(num)) {
+          colComplete = false;
+          break;
+        }
+      }
+      if (colComplete) {
+        const columnNames = ['B', 'I', 'N', 'G', 'O'];
+        return { isWinner: true, pattern: `Vertical Column ${columnNames[col]}` };
+      }
+    }
+
+    // Check diagonal 1 (top-left to bottom-right)
+    let diag1Complete = true;
+    for (let i = 0; i < 5; i++) {
+      const num = card[i][i];
+      if (num !== 0 && !calledNumbers.includes(num)) {
+        diag1Complete = false;
+        break;
+      }
+    }
+    if (diag1Complete) {
+      return { isWinner: true, pattern: 'Diagonal (Top-Left to Bottom-Right)' };
+    }
+
+    // Check diagonal 2 (top-right to bottom-left)
+    let diag2Complete = true;
+    for (let i = 0; i < 5; i++) {
+      const num = card[i][4 - i];
+      if (num !== 0 && !calledNumbers.includes(num)) {
+        diag2Complete = false;
+        break;
+      }
+    }
+    if (diag2Complete) {
+      return { isWinner: true, pattern: 'Diagonal (Top-Right to Bottom-Left)' };
+    }
+
+    return { isWinner: false };
   };
 
   // Render bingo card component
@@ -424,33 +611,6 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
         </div>
       </div>
     );
-  };
-  const handleCheckCard = () => {
-    if (!checkCardInput) {
-      toast({
-        title: "No Card Number",
-        description: "Please enter a cartela number to check",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    const cartelaNumber = parseInt(checkCardInput);
-    if (isNaN(cartelaNumber) || cartelaNumber <= 0) {
-      toast({
-        title: "Invalid Card Number",
-        description: "Please enter a valid cartela number",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // Open winner check popup with the entered card number
-    setShowWinnerCheck(true);
-    // Set the check card input so it gets passed to the popup
-    setTimeout(() => {
-      // This ensures the popup receives the initial value
-    }, 0);
   };
 
   return (
@@ -983,6 +1143,36 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       {/* Main Game Floor */}
       {gameState === 'PLAYING' && (
         <div className="h-screen flex flex-col p-4 overflow-hidden">
+          {/* Shuffle Effect Overlay */}
+          {isShuffling && (
+            <div className="fixed inset-0 bg-black bg-opacity-90 flex flex-col items-center justify-center z-50">
+              <h2 className="text-3xl font-bold text-white mb-4 animate-pulse">SHUFFLING...</h2>
+              <div className="grid grid-cols-15 gap-1 max-w-6xl max-h-[80vh] overflow-y-auto p-4">
+                {Array.from({ length: 75 }, (_, i) => i + 1)
+                  .sort(() => Math.random() - 0.5)
+                  .map((num) => {
+                    const letter = num <= 15 ? 'B' : num <= 30 ? 'I' : num <= 45 ? 'N' : num <= 60 ? 'G' : 'O';
+                    const colors: Record<string, string> = {
+                      'B': 'bg-blue-500',
+                      'I': 'bg-red-500',
+                      'N': 'bg-white',
+                      'G': 'bg-green-500',
+                      'O': 'bg-yellow-500'
+                    };
+                    return (
+                      <div
+                        key={num}
+                        className={`w-8 h-8 ${colors[letter]} rounded flex items-center justify-center text-xs font-bold text-black animate-bounce`}
+                        style={{ animationDelay: `${(num % 15) * 0.05}s` }}
+                      >
+                        {letter}{num}
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
           {/* Top Row Dashboard */}
           <div className="grid grid-cols-4 gap-2 mb-2">
             {/* Large Number Ball */}
@@ -1150,10 +1340,11 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
             </Button>
 
             <Button
-              onClick={handleCallNumber}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 text-lg font-bold"
+              onClick={handleShuffle}
+              disabled={isShuffling}
+              className={`${isShuffling ? 'bg-purple-600 animate-pulse' : 'bg-blue-600 hover:bg-blue-700'} text-white px-8 py-3 text-lg font-bold`}
             >
-              Bowzew
+              {isShuffling ? 'Shuffling...' : 'Bowzew'}
             </Button>
 
             <Select value={gameMode} onValueChange={setGameMode}>
@@ -1194,6 +1385,89 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
               Check
             </Button>
           </div>
+
+          {/* Checked Card Result Display */}
+          {checkedCardResult && (
+            <div className={`mt-4 ${checkedCardResult.cardNumbers.length === 0 ? 'bg-red-600 rounded-lg p-3' : 'bg-gray-800 rounded-lg p-4 border-2 border-yellow-500'}`}>
+              {checkedCardResult.cardNumbers.length === 0 ? (
+                // Not registered message - small popup above check button
+                <div className="flex items-center justify-between">
+                  <span className="text-white font-bold">
+                    Card #{checkedCardResult.cartelaNumber} Not Registered
+                  </span>
+                  <Button
+                    onClick={() => setCheckedCardResult(null)}
+                    variant="ghost"
+                    size="sm"
+                    className="text-white hover:bg-red-700"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
+                // Registered card - show full card layout
+                <>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-bold text-white">
+                      Card #{checkedCardResult.cartelaNumber} - {checkedCardResult.isWinner ? '🎉 WINNER! 🎉' : 'NOT A WINNER'}
+                    </h3>
+                    <Button
+                      onClick={() => setCheckedCardResult(null)}
+                      variant="ghost"
+                      size="sm"
+                      className="text-white hover:bg-gray-700"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  
+                  {/* Card Layout */}
+                  <div className="border-2 rounded-lg overflow-hidden">
+                    {/* BINGO Header */}
+                    <div className="grid grid-cols-5 gap-1 bg-gray-700">
+                      {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+                        <div 
+                          key={letter} 
+                          className={`text-center py-2 font-bold text-white ${getLetterColor(letter)}`}
+                        >
+                          {letter}
+                        </div>
+                      ))}
+                    </div>
+                    {/* Card Numbers */}
+                    {checkedCardResult.cardNumbers.map((row, rowIndex) => (
+                      <div key={rowIndex} className="grid grid-cols-5 gap-1">
+                        {row.map((num, colIndex) => {
+                          const isCalled = num < 0;
+                          const displayNum = Math.abs(num);
+                          const isFreeSpace = num === 0;
+                          
+                          return (
+                            <div 
+                              key={colIndex}
+                              className={`h-10 flex items-center justify-center text-sm font-medium border ${
+                                isCalled 
+                                  ? 'bg-yellow-400 text-black' 
+                                  : 'bg-white text-black'
+                              } ${isFreeSpace ? 'bg-blue-100' : ''}`}
+                            >
+                              {isFreeSpace ? '★' : displayNum}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {checkedCardResult.pattern && (
+                    <p className="text-yellow-400 mt-2 text-center font-bold">
+                      Pattern: {checkedCardResult.pattern}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1294,19 +1568,30 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                 </div>
 
                 {/* Number Grid */}
-                {generateCardNumbers(expandedCard).map((row, rowIdx) => (
+                {generateCardNumbersWithCalled(expandedCard).map((row, rowIdx) => (
                   <div key={rowIdx} className="grid grid-cols-5 gap-2 mb-2 last:mb-0">
-                    {row.map((num, colIdx) => (
-                      <div
-                        key={colIdx}
-                        className={`text-lg font-bold text-center py-3 rounded border-2 ${num === 0
-                          ? 'bg-yellow-400 text-black border-yellow-500'
-                          : 'bg-white text-gray-800 border-gray-300 hover:bg-gray-50'
+                    {row.map((num, colIdx) => {
+                      const isCalled = num < 0;
+                      const displayNum = Math.abs(num);
+                      const isWinner = checkCardWinner(expandedCard).isWinner;
+                      
+                      return (
+                        <div
+                          key={colIdx}
+                          className={`text-lg font-bold text-center py-3 rounded border-2 transition-all duration-300 ${
+                            displayNum === 0
+                              ? 'bg-yellow-400 text-black border-yellow-500'
+                              : isCalled
+                                ? isWinner
+                                  ? 'bg-green-500 text-white border-green-600 shadow-lg shadow-green-400/50 animate-pulse'
+                                  : 'bg-blue-500 text-white border-blue-600'
+                                : 'bg-white text-gray-800 border-gray-300 hover:bg-gray-50'
                           }`}
-                      >
-                        {num === 0 ? '★' : num}
-                      </div>
-                    ))}
+                        >
+                          {displayNum === 0 ? '★' : displayNum}
+                        </div>
+                      );
+                    })}
                   </div>
                 ))}
               </div>
