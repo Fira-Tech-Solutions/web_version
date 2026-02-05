@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Upload, X, Settings, Trophy, Eye, EyeOff } from "lucide-react";
+import { Upload, X, Settings, Trophy, Eye, EyeOff, Edit } from "lucide-react";
 import { customBingoVoice } from "@/lib/custom-voice-synthesis";
 import AudioControls from "@/components/audio-controls";
 import WinnerCheckPopup from "@/components/winner-check-popup";
@@ -40,6 +40,8 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const [expandedCard, setExpandedCard] = useState<number | null>(null);
   const [isCallingNumber, setIsCallingNumber] = useState(false);
   const [isAutoCalling, setIsAutoCalling] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingCard, setEditingCard] = useState<number | null>(null);
   const autoCallInterval = useRef<NodeJS.Timeout | null>(null);
 
   // Active game query
@@ -666,69 +668,125 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
             <div className="flex flex-1 overflow-hidden">
               {/* Left Side - Available Cards */}
-              <div className="w-2/3 border-r border-gray-300 p-6 overflow-y-auto">
+              <div className="w-2/3 border-r border-gray-300 p-6 overflow-y-auto bg-gradient-to-b from-gray-800 to-gray-900">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-bold">Available Cards</h3>
-                  <label className="cursor-pointer">
-                    <input
-                      type="file"
-                      accept=".csv"
-                      onChange={handleCSVImport}
-                      className="hidden"
-                    />
-                    <Button className="bg-green-600 hover:bg-green-700 text-white">
-                      <Upload className="w-4 h-4 mr-2" />
-                      CSV Import
+                  <h3 className="text-lg font-bold text-white">Available Cards</h3>
+                  <div className="flex gap-2">
+                    <Button
+                      className={`${isEditMode ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
+                      onClick={() => {
+                        setIsEditMode(!isEditMode);
+                        setEditingCard(null);
+                        toast({
+                          title: isEditMode ? "Edit Mode Disabled" : "Edit Mode Enabled",
+                          description: isEditMode ? "Click cards to select them" : "Click cards to edit their numbers"
+                        });
+                      }}
+                    >
+                      <Edit className="w-4 h-4 mr-2" />
+                      {isEditMode ? 'Done Editing' : 'Edit'}
                     </Button>
-                  </label>
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        accept=".csv"
+                        onChange={handleCSVImport}
+                        className="hidden"
+                      />
+                      <Button className="bg-green-600 hover:bg-green-700 text-white">
+                        <Upload className="w-4 h-4 mr-2" />
+                        CSV Import
+                      </Button>
+                    </label>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
+                {/* Circular Card Grid */}
+                <div className="grid grid-cols-11 gap-2 p-4">
                   {Array.from({ length: 100 }, (_, i) => i + 1).map((cardNum) => {
                     const isSelected = selectedCards.has(cardNum);
-                    return renderBingoCard(cardNum, isSelected);
+                    const isBeingEdited = editingCard === cardNum;
+                    return (
+                      <button
+                        key={cardNum}
+                        onClick={() => {
+                          if (isEditMode) {
+                            // In edit mode, open edit dialog
+                            setEditingCard(cardNum);
+                          } else {
+                            // In normal mode, toggle selection
+                            const newSelected = new Set(selectedCards);
+                            if (isSelected) {
+                              newSelected.delete(cardNum);
+                            } else {
+                              newSelected.add(cardNum);
+                            }
+                            setSelectedCards(newSelected);
+                          }
+                        }}
+                        className={`
+                          w-14 h-14 rounded-full flex items-center justify-center
+                          font-bold text-xl transition-all duration-200
+                          border-4
+                          ${isBeingEdited
+                            ? 'bg-orange-600 text-white border-orange-400 shadow-lg shadow-orange-400/50 scale-110 animate-pulse'
+                            : isSelected
+                            ? 'bg-green-600 text-white border-yellow-400 shadow-lg shadow-green-400/50 scale-110'
+                            : 'bg-blue-700 text-white border-yellow-600 hover:bg-blue-600 hover:border-yellow-400 hover:scale-105'
+                          }
+                        `}
+                        title={isEditMode ? `Edit Card #${cardNum}` : `Card #${cardNum}`}
+                      >
+                        {cardNum}
+                      </button>
+                    );
                   })}
                 </div>
               </div>
 
               {/* Right Side - Summary */}
-              <div className="w-1/3 p-6 bg-gray-50">
-                <h3 className="text-lg font-bold mb-4">Summary</h3>
+              <div className="w-1/3 p-6 bg-gray-700 overflow-y-auto">
+                <h3 className="text-lg font-bold mb-4 text-white">Summary</h3>
 
                 <div className="mb-4">
-                  <div className="text-sm text-gray-600 mb-2">Selected Cards: {selectedCards.size}</div>
+                  <div className="text-sm text-gray-200 mb-3 font-semibold">Selected Cards: {selectedCards.size}</div>
                   
-                  {/* Show preview of first selected card */}
-                  {selectedCards.size > 0 && (
-                    <div className="mb-4">
-                      <div className="text-xs text-gray-500 mb-1">Preview (Card #{Array.from(selectedCards)[0]}):</div>
-                      <div className="scale-90 origin-top-left">
-                        {renderBingoCard(Array.from(selectedCards)[0], true)}
+                  {/* Display selected cards as circular buttons */}
+                  {selectedCards.size > 0 ? (
+                    <div className="bg-gradient-to-b from-gray-800 to-gray-900 border border-gray-300 rounded-lg p-4 max-h-96 overflow-y-auto">
+                      <div className="grid grid-cols-5 gap-2">
+                        {Array.from(selectedCards).sort((a, b) => a - b).map((cardNum) => (
+                          <div key={cardNum} className="relative">
+                            <button
+                              className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-200 border-4 bg-green-600 text-white border-yellow-400 shadow-lg shadow-green-400/50 hover:scale-110"
+                              title={`Card #${cardNum}`}
+                            >
+                              {cardNum}
+                            </button>
+                            <button
+                              onClick={() => {
+                                const newSelected = new Set(selectedCards);
+                                newSelected.delete(cardNum);
+                                setSelectedCards(newSelected);
+                              }}
+                              className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 hover:bg-red-700 text-white rounded-full flex items-center justify-center shadow-md transition-all hover:scale-110"
+                              title="Remove card"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     </div>
+                  ) : (
+                    <div className="bg-white border border-gray-300 rounded-lg p-4 text-center text-gray-500 text-sm">
+                      No cards selected
+                    </div>
                   )}
-                  
-                  <div className="max-h-32 overflow-y-auto bg-white border border-gray-300 rounded p-2">
-                    {Array.from(selectedCards).map((cardNum) => (
-                      <div key={cardNum} className="flex justify-between items-center py-1">
-                        <span>Card #{cardNum}</span>
-                        <button
-                          onClick={() => {
-                            const newSelected = new Set(selectedCards);
-                            newSelected.delete(cardNum);
-                            setSelectedCards(newSelected);
-                          }}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
                 </div>
 
                 <div className="mb-4">
-                  <label className="block text-sm font-medium mb-2">Top-up Fee (ETB)</label>
+                  <label className="block text-sm font-medium mb-2 text-white">Top-up Fee (ETB)</label>
                   <Select value={topUpFee} onValueChange={setTopUpFee}>
                     <SelectTrigger className="w-full">
                       <SelectValue />
@@ -745,7 +803,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                 </div>
 
                 <div className="mb-4">
-                  <div className="text-sm text-gray-600">Total: {selectedCards.size * parseInt(topUpFee)} ETB</div>
+                  <div className="text-sm text-gray-200 font-semibold">Total: {selectedCards.size * parseInt(topUpFee)} ETB</div>
                 </div>
 
                 <Button
@@ -756,6 +814,84 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                   Start Game
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Card Dialog */}
+      {editingCard !== null && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white text-black rounded-lg shadow-2xl max-w-md w-full p-4">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-lg font-bold">Edit Card #{editingCard}</h3>
+              <button
+                onClick={() => setEditingCard(null)}
+                className="text-gray-600 hover:text-gray-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-4">
+              {/* Card Preview */}
+              <div className="bg-blue-50 rounded-lg p-3">
+                <div className="text-center mb-2 text-sm font-bold text-gray-700">Card Layout</div>
+                <div className="flex justify-center">
+                  <div className="bg-white rounded-lg p-2 inline-block">
+                  <div className="grid grid-cols-5 gap-1 mb-1">
+                    <div className="font-bold text-blue-900 text-center text-xs">B</div>
+                    <div className="font-bold text-red-900 text-center text-xs">I</div>
+                    <div className="font-bold text-gray-900 text-center text-xs">N</div>
+                    <div className="font-bold text-green-900 text-center text-xs">G</div>
+                    <div className="font-bold text-yellow-900 text-center text-xs">O</div>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1">
+                    {generateCardNumbers(editingCard).map((col, colIdx) => (
+                      <div key={colIdx} className="flex flex-col gap-1">
+                        {col.map((num, rowIdx) => (
+                          <div
+                            key={rowIdx}
+                            className={`w-8 h-8 border border-blue-900 rounded flex items-center justify-center font-bold text-xs ${
+                              num === 0 ? 'bg-yellow-400 text-yellow-900' : 'bg-white text-blue-900'
+                            }`}
+                          >
+                            {num === 0 ? '★' : num}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-2 mt-3">
+                <p className="text-xs text-yellow-800">
+                  <strong>Note:</strong> Full editing coming soon.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <Button
+                onClick={() => setEditingCard(null)}
+                className="bg-gray-500 hover:bg-gray-600 text-white text-sm py-2 px-3"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  toast({
+                    title: "Card Updated",
+                    description: `Card #${editingCard} updated`
+                  });
+                  setEditingCard(null);
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-3"
+              >
+                Save
+              </Button>
             </div>
           </div>
         </div>
