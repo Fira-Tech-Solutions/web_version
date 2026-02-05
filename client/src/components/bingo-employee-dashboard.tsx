@@ -45,6 +45,22 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const [viewingCard, setViewingCard] = useState<number | null>(null);
   const autoCallInterval = useRef<NodeJS.Timeout | null>(null);
 
+  // Generate 15x5 grid (1-75)
+  const generateBingoGrid = () => {
+    const grid: number[][] = [];
+    for (let row = 0; row < 5; row++) {
+      const rowNumbers: number[] = [];
+      for (let col = 0; col < 15; col++) {
+        const num = row * 15 + col + 1;
+        rowNumbers.push(num);
+      }
+      grid.push(rowNumbers);
+    }
+    return grid;
+  };
+
+  const bingoGrid = generateBingoGrid();
+
   // Active game query
   const { data: activeGame } = useQuery({
     queryKey: ['/api/games/active'],
@@ -100,21 +116,6 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     if (num >= 61 && num <= 75) return "from-yellow-400 to-yellow-600";
     return "from-gray-400 to-gray-600";
   };
-
-  // Generate 15x5 grid (1-75)
-  const generateBingoGrid = () => {
-    const grid: number[][] = [];
-    for (let row = 0; row < 5; row++) {
-      const rowNumbers: number[] = [];
-      for (let col = 0; col < 15; col++) {
-        rowNumbers.push(row * 15 + col + 1);
-      }
-      grid.push(rowNumbers);
-    }
-    return grid;
-  };
-
-  const bingoGrid = generateBingoGrid();
 
   // CSV Import handler
   const handleCSVImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -189,22 +190,25 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
     setIsCallingNumber(true);
 
+    // Update UI state immediately
+    setCurrentNumber(newNumber);
+    const newCalledNumbers = [...calledNumbers, newNumber];
+    setCalledNumbers(newCalledNumbers);
+    
+    console.log(`Called number: ${newNumber}, Total called: ${newCalledNumbers.length}`, newCalledNumbers);
+
+    // Show toast immediately
+    toast({
+      title: "Number Called",
+      description: `${getLetterForNumber(newNumber)} ${newNumber}`
+    });
+
+    // Play voice announcement in background (non-blocking)
     try {
-      // Announce the number with voice
       await customBingoVoice.callNumber(newNumber);
-
-      setCurrentNumber(newNumber);
-      setCalledNumbers([...calledNumbers, newNumber]);
-
-      toast({
-        title: "Number Called",
-        description: `${getLetterForNumber(newNumber)} ${newNumber}`
-      });
     } catch (error) {
       console.error('Error calling number:', error);
-      // Still update the game state even if voice fails
-      setCurrentNumber(newNumber);
-      setCalledNumbers([...calledNumbers, newNumber]);
+      // Voice error doesn't affect the game state
     } finally {
       setIsCallingNumber(false);
     }
@@ -213,12 +217,12 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   // Start auto-calling
   const startAutoCalling = () => {
     if (isAutoCalling) return;
-
+    
     setIsAutoCalling(true);
-
+    
     // Call first number immediately
     handleCallNumber();
-
+    
     // Then call numbers at intervals based on speed
     const intervalMs = Math.max(1000, 11000 - (speed * 1000)); // Speed 1=10s, 10=1s
     autoCallInterval.current = setInterval(() => {
@@ -256,10 +260,18 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   // Update interval when speed changes
   useEffect(() => {
     if (isAutoCalling) {
-      stopAutoCalling();
-      startAutoCalling();
+      // Only restart if we're actually auto-calling
+      // Don't stop and start immediately - just update the interval
+      if (autoCallInterval.current) {
+        clearInterval(autoCallInterval.current);
+      }
+      
+      const intervalMs = Math.max(1000, 11000 - (speed * 1000));
+      autoCallInterval.current = setInterval(() => {
+        handleCallNumber();
+      }, intervalMs);
     }
-  }, [speed]);
+  }, [speed, isAutoCalling]);
 
   // Check winner handler
   const handleCheckWinner = async (cartelaNumber: number): Promise<{ isWinner: boolean; pattern?: string }> => {
@@ -1125,9 +1137,9 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
             <Button
               onClick={toggleAutoCalling}
               disabled={isCallingNumber}
-              className={`${isAutoCalling ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} text-white px-8 py-3 text-lg font-bold`}
+              className={`${isAutoCalling ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'} text-white px-8 py-3 text-lg font-bold`}
             >
-              {isAutoCalling ? "Stop Calling" : "Bingo"}
+              {isAutoCalling ? "Pause" : "Bingo"}
             </Button>
 
             <Button
