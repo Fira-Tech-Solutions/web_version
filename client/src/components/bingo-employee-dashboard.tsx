@@ -8,8 +8,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Upload, X, Settings, Trophy, Eye, EyeOff, Edit } from "lucide-react";
 import { customBingoVoice } from "@/lib/custom-voice-synthesis";
-import AudioControls from "@/components/audio-controls";
-import WinnerCheckPopup from "@/components/winner-check-popup";
 
 interface BingoEmployeeDashboardProps {
   onLogout: () => void;
@@ -34,8 +32,6 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const [topUpFee, setTopUpFee] = useState("10");
   const [gameMode, setGameMode] = useState("Bereket");
   const [rechargeFile, setRechargeFile] = useState<File | null>(null);
-  const [showAudioControls, setShowAudioControls] = useState(false);
-  const [showWinnerCheck, setShowWinnerCheck] = useState(false);
   const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
   const [expandedCard, setExpandedCard] = useState<number | null>(null);
   const [isCallingNumber, setIsCallingNumber] = useState(false);
@@ -50,7 +46,19 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     cardNumbers: number[][];
   } | null>(null);
   const [isShuffling, setIsShuffling] = useState(false);
+  const [selectedVoice, setSelectedVoice] = useState<string>("arada");
   const autoCallInterval = useRef<NodeJS.Timeout | null>(null);
+
+  // Initialize voice selection
+  useEffect(() => {
+    const voices = customBingoVoice.getAvailableVoices();
+    if (voices.length > 0) {
+      const currentVoice = customBingoVoice.getCurrentVoice();
+      if (currentVoice) {
+        setSelectedVoice(currentVoice.name);
+      }
+    }
+  }, []);
 
   // Generate 15x5 grid (1-75)
   const generateBingoGrid = () => {
@@ -274,6 +282,9 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     }, 3000);
   };
 
+  // Force re-render for checked card result
+  const [, forceUpdate] = useState({});
+
   // Clean up interval on component unmount
   useEffect(() => {
     return () => {
@@ -299,33 +310,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     }
   }, [speed, isAutoCalling]);
 
-  // Check winner handler
-  const handleCheckWinner = async (cartelaNumber: number): Promise<{ isWinner: boolean; pattern?: string }> => {
-    try {
-      const response = await fetch('/api/games/check-winner', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          cartelaNumber,
-          calledNumbers
-        })
-      });
 
-      if (!response.ok) {
-        throw new Error('Failed to check winner');
-      }
-
-      const result = await response.json();
-      return result;
-    } catch (error) {
-      console.error('Error checking winner:', error);
-      throw error;
-    }
-  };
-
-  // Enhanced check card handler with audio feedback
   const handleCheckCard = async () => {
     console.log('handleCheckCard called, checkCardInput:', checkCardInput);
     
@@ -364,6 +349,9 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
         cardNumbers: []
       });
       
+      // Force re-render
+      forceUpdate({});
+      
       // Play "not registered" audio
       try {
         await customBingoVoice.playNotRegistered();
@@ -374,6 +362,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       // Clear the message after 3 seconds
       setTimeout(() => {
         setCheckedCardResult(null);
+        forceUpdate({});
       }, 3000);
       
       return;
@@ -394,6 +383,9 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       pattern: result.pattern,
       cardNumbers
     });
+    
+    // Force re-render
+    forceUpdate({});
     
     // Play appropriate audio immediately
     try {
@@ -636,20 +628,6 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                   className="hover:text-blue-400 transition"
                 >
                   Report
-                </button>
-                <button
-                  onClick={() => setShowAudioControls(!showAudioControls)}
-                  className="hover:text-blue-400 transition flex items-center gap-1"
-                >
-                  <Settings className="w-4 h-4" />
-                  Audio
-                </button>
-                <button
-                  onClick={() => setShowWinnerCheck(true)}
-                  className="hover:text-blue-400 transition flex items-center gap-1"
-                >
-                  <Trophy className="w-4 h-4" />
-                  Check Winner
                 </button>
               </div>
               <div className="text-sm">Round 1</div>
@@ -1145,31 +1123,108 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
         <div className="h-screen flex flex-col p-4 overflow-hidden">
           {/* Shuffle Effect Overlay */}
           {isShuffling && (
-            <div className="fixed inset-0 bg-black bg-opacity-90 flex flex-col items-center justify-center z-50">
-              <h2 className="text-3xl font-bold text-white mb-4 animate-pulse">SHUFFLING...</h2>
-              <div className="grid grid-cols-15 gap-1 max-w-6xl max-h-[80vh] overflow-y-auto p-4">
-                {Array.from({ length: 75 }, (_, i) => i + 1)
-                  .sort(() => Math.random() - 0.5)
-                  .map((num) => {
-                    const letter = num <= 15 ? 'B' : num <= 30 ? 'I' : num <= 45 ? 'N' : num <= 60 ? 'G' : 'O';
-                    const colors: Record<string, string> = {
-                      'B': 'bg-blue-500',
-                      'I': 'bg-red-500',
-                      'N': 'bg-white',
-                      'G': 'bg-green-500',
-                      'O': 'bg-yellow-500'
-                    };
-                    return (
-                      <div
-                        key={num}
-                        className={`w-8 h-8 ${colors[letter]} rounded flex items-center justify-center text-xs font-bold text-black animate-bounce`}
-                        style={{ animationDelay: `${(num % 15) * 0.05}s` }}
-                      >
-                        {letter}{num}
-                      </div>
-                    );
-                  })}
+            <div className="fixed inset-0 bg-black bg-opacity-95 flex flex-col items-center justify-center z-50">
+              <div className="relative w-96 h-96 mb-8">
+                {/* Bingo Cage Circle */}
+                <div className="absolute inset-0 rounded-full border-8 border-yellow-500 animate-spin-slow">
+                  {/* Mixing balls inside cage */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    {Array.from({ length: 20 }, (_, i) => i + 1).map((num, idx) => {
+                      const angle = (idx * 18) * (Math.PI / 180);
+                      const radius = 35 + Math.sin(idx * 0.5) * 15;
+                      const x = Math.cos(angle) * radius;
+                      const y = Math.sin(angle) * radius;
+                      const letter = num <= 15 ? 'B' : num <= 30 ? 'I' : num <= 45 ? 'N' : num <= 60 ? 'G' : 'O';
+                      const colors: Record<string, string> = {
+                        'B': 'bg-blue-500',
+                        'I': 'bg-red-500',
+                        'N': 'bg-white',
+                        'G': 'bg-green-500',
+                        'O': 'bg-yellow-500'
+                      };
+                      return (
+                        <div
+                          key={num}
+                          className={`absolute w-12 h-12 rounded-full ${colors[letter]} flex items-center justify-center font-bold text-sm text-black shadow-lg animate-bounce-slow`}
+                          style={{
+                            transform: `translate(${x}px, ${y}px)`,
+                            animationDelay: `${idx * 0.1}s`
+                          }}
+                        >
+                          {letter}{num}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* Cage wire effect */}
+                <div className="absolute inset-0 rounded-full border-4 border-gray-400 opacity-30 animate-spin-reverse"></div>
               </div>
+              
+              <h2 className="text-4xl font-bold text-white mb-8 animate-pulse tracking-widest">SHUFFLING...</h2>
+              
+              {/* All 75 numbers grid with continuous shuffling */}
+              <div className="w-full max-w-6xl px-4">
+                <div className="bg-gray-900 rounded-xl p-4 border-2 border-yellow-500">
+                  <div className="grid grid-cols-15 gap-2">
+                    {Array.from({ length: 75 }, (_, i) => i + 1)
+                      .sort(() => Math.random() - 0.5)
+                      .map((num) => {
+                        const letter = num <= 15 ? 'B' : num <= 30 ? 'I' : num <= 45 ? 'N' : num <= 60 ? 'G' : 'O';
+                        const colors: Record<string, string> = {
+                          'B': 'bg-blue-500',
+                          'I': 'bg-red-500',
+                          'N': 'bg-white',
+                          'G': 'bg-green-500',
+                          'O': 'bg-yellow-500'
+                        };
+                        return (
+                          <div
+                            key={num}
+                            className={`w-8 h-8 ${colors[letter]} rounded flex items-center justify-center text-xs font-bold text-black animate-shuffle`}
+                            style={{ animationDelay: `${Math.random() * 2}s` }}
+                          >
+                            {letter}{num}
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              </div>
+              
+              {/* CSS for shuffle animations */}
+              <style>{`
+                @keyframes spin-slow {
+                  from { transform: rotate(0deg); }
+                  to { transform: rotate(360deg); }
+                }
+                @keyframes spin-reverse {
+                  from { transform: rotate(360deg); }
+                  to { transform: rotate(0deg); }
+                }
+                @keyframes bounce-slow {
+                  0%, 100% { transform: translateY(0); }
+                  50% { transform: translateY(-10px); }
+                }
+                @keyframes shuffle {
+                  0%, 100% { transform: translateX(0) scale(1); }
+                  25% { transform: translateX(-5px) scale(1.1); }
+                  50% { transform: translateX(5px) scale(0.95); }
+                  75% { transform: translateX(-3px) scale(1.05); }
+                }
+                .animate-spin-slow {
+                  animation: spin-slow 3s linear infinite;
+                }
+                .animate-spin-reverse {
+                  animation: spin-reverse 2s linear infinite;
+                }
+                .animate-bounce-slow {
+                  animation: bounce-slow 0.5s ease-in-out infinite;
+                }
+                .animate-shuffle {
+                  animation: shuffle 0.8s ease-in-out infinite;
+                }
+              `}</style>
             </div>
           )}
 
@@ -1301,21 +1356,15 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                 {bingoGrid[rowIdx].map((num) => {
                   const isCalled = calledNumbers.includes(num);
                   return (
-                    <button
+                    <div
                       key={num}
-                      onClick={() => {
-                        if (!calledNumbers.includes(num)) {
-                          setCurrentNumber(num);
-                          setCalledNumbers([...calledNumbers, num]);
-                        }
-                      }}
-                      className={`h-16 rounded text-xl font-bold transition ${isCalled
+                      className={`h-16 rounded text-xl font-bold flex items-center justify-center ${isCalled
                         ? `bg-gradient-to-br ${getBallGradient(num)} text-white shadow-lg`
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        : 'bg-gray-700 text-gray-300'
                         }`}
                     >
                       {num}
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -1358,6 +1407,26 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
               </SelectContent>
             </Select>
 
+            <Select value={selectedVoice} onValueChange={(voice) => {
+              setSelectedVoice(voice);
+              const voices = customBingoVoice.getAvailableVoices();
+              const selected = voices.find(v => v.name === voice);
+              if (selected) {
+                customBingoVoice.setVoice(selected);
+              }
+            }}>
+              <SelectTrigger className="w-40 bg-white text-black">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {customBingoVoice.getAvailableVoices().map((voice) => (
+                  <SelectItem key={voice.name} value={voice.name}>
+                    {voice.displayName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <div className="flex items-center gap-2">
               <label className="text-white font-medium">Speed: {speed}</label>
               <input
@@ -1380,7 +1449,8 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
             <Button
               onClick={handleCheckCard}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 text-lg font-bold"
+              disabled={!checkCardInput}
+              className={`${!checkCardInput ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} text-white px-8 py-3 text-lg font-bold`}
             >
               Check
             </Button>
@@ -1470,37 +1540,6 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
           )}
         </div>
       )}
-
-      {/* Audio Controls Popup */}
-      {showAudioControls && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full mx-4">
-            <div className="bg-gray-800 text-white px-6 py-4 rounded-t-lg flex justify-between items-center">
-              <h2 className="text-xl font-bold">Audio Settings</h2>
-              <Button
-                onClick={() => setShowAudioControls(false)}
-                variant="ghost"
-                size="sm"
-                className="text-white hover:bg-white hover:bg-opacity-20"
-              >
-                <X className="w-5 h-5" />
-              </Button>
-            </div>
-            <div className="p-6">
-              <AudioControls />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Winner Check Popup */}
-      <WinnerCheckPopup
-        isOpen={showWinnerCheck}
-        onClose={() => setShowWinnerCheck(false)}
-        calledNumbers={calledNumbers}
-        onCheckWinner={handleCheckWinner}
-        initialCartelaNumber={checkCardInput}
-      />
 
       {/* New Game Confirmation Dialog */}
       {showNewGameConfirm && (
