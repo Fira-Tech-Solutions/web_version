@@ -42,6 +42,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const [isAutoCalling, setIsAutoCalling] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingCard, setEditingCard] = useState<number | null>(null);
+  const [viewingCard, setViewingCard] = useState<number | null>(null);
   const autoCallInterval = useRef<NodeJS.Timeout | null>(null);
 
   // Active game query
@@ -187,14 +188,14 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     const newNumber = availableNumbers[randomIndex];
 
     setIsCallingNumber(true);
-    
+
     try {
       // Announce the number with voice
       await customBingoVoice.callNumber(newNumber);
-      
+
       setCurrentNumber(newNumber);
       setCalledNumbers([...calledNumbers, newNumber]);
-      
+
       toast({
         title: "Number Called",
         description: `${getLetterForNumber(newNumber)} ${newNumber}`
@@ -212,12 +213,12 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   // Start auto-calling
   const startAutoCalling = () => {
     if (isAutoCalling) return;
-    
+
     setIsAutoCalling(true);
-    
+
     // Call first number immediately
     handleCallNumber();
-    
+
     // Then call numbers at intervals based on speed
     const intervalMs = Math.max(1000, 11000 - (speed * 1000)); // Speed 1=10s, 10=1s
     autoCallInterval.current = setInterval(() => {
@@ -296,7 +297,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       });
       return;
     }
-    
+
     try {
       // Announce game start
       await customBingoVoice.announceGameStart();
@@ -326,7 +327,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     };
 
     const card: number[][] = [];
-    
+
     // B column (1-15)
     const b = Array.from({ length: 5 }, () => random(1, 15));
     // I column (16-30)
@@ -347,13 +348,13 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   // Render bingo card component
   const renderBingoCard = (cardNum: number, isSelected: boolean) => {
     const cardNumbers = generateCardNumbers(cardNum);
-    
+
     return (
       <div className={`relative transition-all duration-200 ${isSelected ? 'scale-105' : 'scale-100'}`}>
         <div
           className={`p-3 rounded-lg border-2 transition-all ${isSelected
-              ? 'border-blue-600 bg-blue-50 shadow-lg'
-              : 'border-gray-300 bg-white hover:border-blue-400 hover:shadow-md'
+            ? 'border-blue-600 bg-blue-50 shadow-lg'
+            : 'border-gray-300 bg-white hover:border-blue-400 hover:shadow-md'
             }`}
         >
           {/* Card Header with Number and Eye Icon */}
@@ -384,11 +385,10 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
             }}
             className="cursor-pointer"
           >
-            <div className={`p-4 rounded-lg border-2 transition-all ${
-              isSelected
+            <div className={`p-4 rounded-lg border-2 transition-all ${isSelected
                 ? 'border-blue-600 bg-blue-50 shadow-lg'
                 : 'border-gray-300 bg-white hover:border-blue-400 hover:shadow-md'
-            }`}>
+              }`}>
               <div className="flex justify-between items-center">
                 <div className="font-bold text-lg text-gray-700">Card #{cardNum}</div>
                 <button
@@ -707,38 +707,51 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                     const isSelected = selectedCards.has(cardNum);
                     const isBeingEdited = editingCard === cardNum;
                     return (
-                      <button
-                        key={cardNum}
-                        onClick={() => {
-                          if (isEditMode) {
-                            // In edit mode, open edit dialog
-                            setEditingCard(cardNum);
-                          } else {
-                            // In normal mode, toggle selection
-                            const newSelected = new Set(selectedCards);
-                            if (isSelected) {
-                              newSelected.delete(cardNum);
+                      <div key={cardNum} className="relative">
+                        <button
+                          onClick={() => {
+                            if (isEditMode) {
+                              // In edit mode, open edit dialog
+                              setEditingCard(cardNum);
                             } else {
-                              newSelected.add(cardNum);
+                              // In normal mode, toggle selection
+                              const newSelected = new Set(selectedCards);
+                              if (isSelected) {
+                                newSelected.delete(cardNum);
+                              } else {
+                                newSelected.add(cardNum);
+                              }
+                              setSelectedCards(newSelected);
                             }
-                            setSelectedCards(newSelected);
-                          }
-                        }}
-                        className={`
-                          w-14 h-14 rounded-full flex items-center justify-center
-                          font-bold text-xl transition-all duration-200
-                          border-4
-                          ${isBeingEdited
-                            ? 'bg-orange-600 text-white border-orange-400 shadow-lg shadow-orange-400/50 scale-110 animate-pulse'
-                            : isSelected
-                            ? 'bg-green-600 text-white border-yellow-400 shadow-lg shadow-green-400/50 scale-110'
-                            : 'bg-blue-700 text-white border-yellow-600 hover:bg-blue-600 hover:border-yellow-400 hover:scale-105'
-                          }
-                        `}
-                        title={isEditMode ? `Edit Card #${cardNum}` : `Card #${cardNum}`}
-                      >
-                        {cardNum}
-                      </button>
+                          }}
+                          className={`
+                            w-14 h-14 rounded-full flex items-center justify-center
+                            font-bold text-xl transition-all duration-200
+                            border-4
+                            ${isBeingEdited
+                              ? 'bg-orange-600 text-white border-orange-400 shadow-lg shadow-orange-400/50 scale-110 animate-pulse'
+                              : isSelected
+                              ? 'bg-green-600 text-white border-yellow-400 shadow-lg shadow-green-400/50 scale-110'
+                              : 'bg-blue-700 text-white border-yellow-600 hover:bg-blue-600 hover:border-yellow-400 hover:scale-105'
+                            }
+                          `}
+                          title={isEditMode ? `Edit Card #${cardNum}` : `Card #${cardNum}`}
+                        >
+                          {cardNum}
+                        </button>
+                        {isSelected && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setViewingCard(cardNum);
+                            }}
+                            className="absolute -bottom-1 -right-1 w-5 h-5 bg-blue-600 hover:bg-blue-700 text-white rounded-full flex items-center justify-center shadow-md transition-all hover:scale-110 z-10"
+                            title="View card layout"
+                          >
+                            <Eye className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -750,7 +763,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
                 <div className="mb-4">
                   <div className="text-sm text-gray-200 mb-3 font-semibold">Selected Cards: {selectedCards.size}</div>
-                  
+
                   {/* Display selected cards as circular buttons */}
                   {selectedCards.size > 0 ? (
                     <div className="bg-gradient-to-b from-gray-800 to-gray-900 border border-gray-300 rounded-lg p-4 max-h-96 overflow-y-auto">
@@ -839,29 +852,28 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                 <div className="text-center mb-2 text-sm font-bold text-gray-700">Card Layout</div>
                 <div className="flex justify-center">
                   <div className="bg-white rounded-lg p-2 inline-block">
-                  <div className="grid grid-cols-5 gap-1 mb-1">
-                    <div className="font-bold text-blue-900 text-center text-xs">B</div>
-                    <div className="font-bold text-red-900 text-center text-xs">I</div>
-                    <div className="font-bold text-gray-900 text-center text-xs">N</div>
-                    <div className="font-bold text-green-900 text-center text-xs">G</div>
-                    <div className="font-bold text-yellow-900 text-center text-xs">O</div>
-                  </div>
-                  <div className="grid grid-cols-5 gap-1">
-                    {generateCardNumbers(editingCard).map((col, colIdx) => (
-                      <div key={colIdx} className="flex flex-col gap-1">
-                        {col.map((num, rowIdx) => (
-                          <div
-                            key={rowIdx}
-                            className={`w-8 h-8 border border-blue-900 rounded flex items-center justify-center font-bold text-xs ${
-                              num === 0 ? 'bg-yellow-400 text-yellow-900' : 'bg-white text-blue-900'
-                            }`}
-                          >
-                            {num === 0 ? '★' : num}
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
+                    <div className="grid grid-cols-5 gap-1 mb-1">
+                      <div className="font-bold text-blue-900 text-center text-xs">B</div>
+                      <div className="font-bold text-red-900 text-center text-xs">I</div>
+                      <div className="font-bold text-gray-900 text-center text-xs">N</div>
+                      <div className="font-bold text-green-900 text-center text-xs">G</div>
+                      <div className="font-bold text-yellow-900 text-center text-xs">O</div>
+                    </div>
+                    <div className="grid grid-cols-5 gap-1">
+                      {generateCardNumbers(editingCard).map((col, colIdx) => (
+                        <div key={colIdx} className="flex flex-col gap-1">
+                          {col.map((num, rowIdx) => (
+                            <div
+                              key={rowIdx}
+                              className={`w-8 h-8 border border-blue-900 rounded flex items-center justify-center font-bold text-xs ${num === 0 ? 'bg-yellow-400 text-yellow-900' : 'bg-white text-blue-900'
+                                }`}
+                            >
+                              {num === 0 ? '★' : num}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -891,6 +903,65 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                 className="bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-3"
               >
                 Save
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Card Dialog */}
+      {viewingCard !== null && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white text-black rounded-lg shadow-2xl max-w-md w-full p-4">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-lg font-bold">Card #{viewingCard}</h3>
+              <button
+                onClick={() => setViewingCard(null)}
+                className="text-gray-600 hover:text-gray-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-4">
+              {/* Card Preview */}
+              <div className="bg-blue-50 rounded-lg p-3">
+                <div className="text-center mb-2 text-sm font-bold text-gray-700">Card Layout</div>
+                <div className="flex justify-center">
+                  <div className="bg-white rounded-lg p-2 inline-block">
+                    <div className="grid grid-cols-5 gap-1 mb-1">
+                      <div className="font-bold text-blue-900 text-center text-xs">B</div>
+                      <div className="font-bold text-red-900 text-center text-xs">I</div>
+                      <div className="font-bold text-gray-900 text-center text-xs">N</div>
+                      <div className="font-bold text-green-900 text-center text-xs">G</div>
+                      <div className="font-bold text-yellow-900 text-center text-xs">O</div>
+                    </div>
+                    <div className="grid grid-cols-5 gap-1">
+                      {generateCardNumbers(viewingCard).map((col, colIdx) => (
+                        <div key={colIdx} className="flex flex-col gap-1">
+                          {col.map((num, rowIdx) => (
+                            <div
+                              key={rowIdx}
+                              className={`w-8 h-8 border border-blue-900 rounded flex items-center justify-center font-bold text-xs ${num === 0 ? 'bg-yellow-400 text-yellow-900' : 'bg-white text-blue-900'
+                                }`}
+                            >
+                              {num === 0 ? '★' : num}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-center">
+              <Button
+                onClick={() => setViewingCard(null)}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-4"
+              >
+                Close
               </Button>
             </div>
           </div>
@@ -1009,8 +1080,8 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                         }
                       }}
                       className={`h-16 rounded text-xl font-bold transition ${isCalled
-                          ? `bg-gradient-to-br ${getBallGradient(num)} text-white shadow-lg`
-                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        ? `bg-gradient-to-br ${getBallGradient(num)} text-white shadow-lg`
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                         }`}
                     >
                       {num}
@@ -1188,11 +1259,10 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                     {row.map((num, colIdx) => (
                       <div
                         key={colIdx}
-                        className={`text-lg font-bold text-center py-3 rounded border-2 ${
-                          num === 0 
-                            ? 'bg-yellow-400 text-black border-yellow-500' 
+                        className={`text-lg font-bold text-center py-3 rounded border-2 ${num === 0
+                            ? 'bg-yellow-400 text-black border-yellow-500'
                             : 'bg-white text-gray-800 border-gray-300 hover:bg-gray-50'
-                        }`}
+                          }`}
                       >
                         {num === 0 ? '★' : num}
                       </div>
@@ -1213,11 +1283,10 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                     }
                     setSelectedCards(newSelected);
                   }}
-                  className={`flex-1 ${
-                    selectedCards.has(expandedCard)
+                  className={`flex-1 ${selectedCards.has(expandedCard)
                       ? 'bg-red-600 hover:bg-red-700'
                       : 'bg-blue-600 hover:bg-blue-700'
-                  } text-white`}
+                    } text-white`}
                 >
                   {selectedCards.has(expandedCard) ? 'Deselect Card' : 'Select Card'}
                 </Button>
