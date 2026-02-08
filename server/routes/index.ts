@@ -6,7 +6,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import session from "express-session";
 import { storage } from "../storage";
 import bcrypt from "bcrypt";
-import { insertUserSchema, insertShopSchema, insertGameSchema, insertGamePlayerSchema, insertTransactionSchema, insertCustomCartelaSchema } from "@shared/schema-simple";
+import { insertUserSchema, insertGameSchema, insertGamePlayerSchema, insertTransactionSchema, insertCustomCartelaSchema } from "@shared/schema-simple";
 import { z } from "zod";
 import { getFixedCartelaPattern as getFixedPattern, getCartelaNumbers } from "../lib/fixed-cartelas";
 import { encryptData, decryptData, signBalance, verifyBalance, generateKeyPair } from "../lib/crypto";
@@ -162,10 +162,6 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
     next();
   });
 
-  // Balance Redemption Route
-  const { balanceRouter } = await import("./balance");
-  app.use("/api/balance", balanceRouter);
-
   // Authentication routes
   app.post("/api/auth/login", async (req, res) => {
     try {
@@ -255,8 +251,7 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
 
   app.post("/api/admin/employees/generate-account-file", async (req, res) => {
     try {
-      const userId = (req.session as any)?.userId;
-      const user = await storage.getUser(userId);
+      const user = req.session.user;
       if (!user || user.role !== 'admin') {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -273,7 +268,6 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
         username,
         password: hashedPassword,
         name,
-        shopId: user.shopId,
         accountNumber,
         generatedAt: new Date().toISOString()
       };
@@ -594,93 +588,6 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
     }
   });
 
-  app.get("/api/users/shop/:shopId", async (req, res) => {
-    try {
-      const shopId = parseInt(req.params.shopId);
-      const users = await storage.getUsersByShop(shopId);
-
-      const usersWithoutPasswords = users.map(({ password, ...user }) => user);
-      res.json(usersWithoutPasswords);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to get shop users" });
-    }
-  });
-
-  // Shop routes
-  app.get("/api/shops", async (req, res) => {
-    try {
-      const shops = await storage.getShops();
-      res.json(shops);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to get shops" });
-    }
-  });
-
-  app.post("/api/shops", async (req, res) => {
-    try {
-      const shopData = insertShopSchema.parse(req.body);
-      const shop = await storage.createShop(shopData);
-      res.json(shop);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid input", errors: error.errors });
-      }
-      res.status(500).json({ message: "Failed to create shop" });
-    }
-  });
-
-  app.patch("/api/shops/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const shop = await storage.updateShop(id, req.body);
-      if (!shop) {
-        return res.status(404).json({ message: "Shop not found" });
-      }
-      res.json(shop);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update shop" });
-    }
-  });
-
-  app.get("/api/shops/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const shop = await storage.getShop(id);
-      if (!shop) {
-        return res.status(404).json({ message: "Shop not found" });
-      }
-      res.json(shop);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to get shop" });
-    }
-  });
-
-  app.get("/api/shops/:id/stats", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const { startDate, endDate } = req.query;
-
-      const start = startDate ? new Date(startDate as string) : undefined;
-      const end = endDate ? new Date(endDate as string) : undefined;
-
-      const stats = await storage.getShopStats(id, start, end);
-      res.json(stats);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to get shop stats" });
-    }
-  });
-
-  // Game routes
-  app.get("/api/games/active/:employeeId", async (req, res) => {
-    try {
-      const employeeId = parseInt(req.params.employeeId);
-      const game = await storage.getActiveGameByEmployee(employeeId);
-      res.json(game);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to get active game" });
-    }
-  });
-
   app.post("/api/games", async (req, res) => {
     try {
       const userId = req.session?.userId;
@@ -693,39 +600,27 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
         return res.status(401).json({ message: "User not found" });
       }
 
-      // Check shop's balance
-      const shop = await storage.getShop(user.shopId!);
-      if (!shop) {
-        return res.status(400).json({ message: "Shop not found" });
-      }
+      // Create game with employee as the owner
 
-      // Deduct balance logic: 
-      // User requirement: "when playing the balance must be deducted".
-      // Assuming deduction of 50 ETB or the game amount?
-      // "if it is less than 50ETB they cannot be able to start the game"
-      // This implies 50 ETB is the threshold or the cost?
-      // Let's assume the Cost is calculated based on Cartelas, but check if Shop Balance > 50.
-
-      const shopBalance = parseFloat(shop.balance?.toString() || '0');
+      // Check employee's balance
+      const userBalance = parseFloat(user.balance?.toString() || '0');
       const cartelas = req.body.cartelas || [];
       const entryFee = parseFloat(req.body.amount || '20');
-      const totalCost = cartelas.length * entryFee; // Or is the deduction fixed?
+      const totalCost = cartelas.length * entryFee;
 
-      // Let's implement the specific rule: "if less than 50ETB cannot start".
-      // AND "balance must be deducted". I will deduct 'totalCost'.
-
-      if (shopBalance < 50) {
+      // Check if employee has sufficient balance
+      if (userBalance < 50) {
         return res.status(403).json({
-          message: `Insufficient shop balance. Minimum 50 ETB required to start. Current: ${shopBalance.toFixed(2)} ETB`,
-          balance: shopBalance.toFixed(2),
+          message: `Insufficient balance. Minimum 50 ETB required to start. Current: ${userBalance.toFixed(2)} ETB`,
+          balance: userBalance.toFixed(2),
           required: "50.00",
         });
       }
 
-      if (shopBalance < totalCost) {
+      if (userBalance < totalCost) {
         return res.status(403).json({
-          message: `Insufficient shop balance for this game size. Need ${totalCost.toFixed(2)} ETB. Current: ${shopBalance.toFixed(2)} ETB`,
-          balance: shopBalance.toFixed(2),
+          message: `Insufficient balance for this game size. Need ${totalCost.toFixed(2)} ETB. Current: ${userBalance.toFixed(2)} ETB`,
+          balance: userBalance.toFixed(2),
           required: totalCost.toFixed(2),
         });
       }
@@ -734,7 +629,7 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
         body: req.body,
         userId: userId,
         authenticatedUser: user.username,
-        shopBalance: shopBalance,
+        userBalance: userBalance,
         totalCost: totalCost,
         timestamp: new Date().toISOString()
       });
@@ -743,7 +638,6 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
       const gameData = insertGameSchema.parse({
         ...req.body,
         employeeId: user.id,
-        shopId: user.shopId,
         status: "waiting",
         entryFee: String(req.body.amount || "20.00")
       });
@@ -751,14 +645,9 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
       const game = await storage.createGame(gameData);
 
       // DEDUCT BALANCE NOW
-      // We need to update shop balance.
-      // Ideally inside a transaction safely, but storage.createGame is separate.
-      // We will update shop balance here.
-      // Wait, db import is needed if I query directly, or use storage method.
-      // I'll assume storage.updateShop is available.
-
-      const newBalance = (shopBalance - totalCost).toFixed(2);
-      await storage.updateShop(shop.id, { balance: newBalance });
+      // Update employee balance
+      const newBalance = (userBalance - totalCost).toFixed(2);
+      await storage.updateUserBalance(user.id, newBalance);
 
       // Log transaction?
       // storage.createTransaction({...})
@@ -1101,34 +990,21 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
   });
 
   // Game History routes
-  app.get("/api/game-history/:shopId", async (req, res) => {
+  app.get("/api/game-history/:employeeId", async (req, res) => {
     try {
-      const shopId = parseInt(req.params.shopId);
+      const employeeId = req.params.employeeId === 'undefined' ? undefined : parseInt(req.params.employeeId);
       const { startDate, endDate } = req.query;
 
       const start = startDate ? new Date(startDate as string) : undefined;
       const end = endDate ? new Date(endDate as string) : undefined;
 
-      const history = await storage.getGameHistory(shopId, start, end);
-      res.json(history);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to get game history" });
-    }
-  });
-
-  // Admin game history route
-  app.get("/api/admin/game-history", async (req, res) => {
-    try {
-      const user = req.session.user;
-      if (!user || user.role !== 'admin') {
-        return res.status(403).json({ message: "Admin access required" });
+      if (!employeeId) {
+        // If no employeeId provided, return empty array for now
+        // This could be enhanced to return all game history for admins
+        return res.json([]);
       }
 
-      const { startDate, endDate } = req.query;
-      const start = startDate ? new Date(startDate as string) : undefined;
-      const end = endDate ? new Date(endDate as string) : undefined;
-
-      const history = await storage.getGameHistory(user.shopId, start, end);
+      const history = await storage.getEmployeeGameHistory(employeeId, start, end);
       res.json(history);
     } catch (error) {
       res.status(500).json({ message: "Failed to get game history" });
@@ -1920,19 +1796,23 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      let gameHistory;
-      if (user.role === 'admin') {
-        // Admin sees all game history
-        gameHistory = await storage.getGameHistory(0); // 0 means all shops
-      } else {
-        // Admin sees only their shop's game history
-        if (!user.shopId) {
-          return res.status(400).json({ message: "Admin not assigned to a shop" });
+      // Admin sees all game history across all employees
+      const { startDate, endDate } = req.query;
+      const start = startDate ? new Date(startDate as string) : undefined;
+      const end = endDate ? new Date(endDate as string) : undefined;
+
+      // Get all users and their game history
+      const allUsers = await storage.getUsers();
+      const allHistory = [];
+
+      for (const employee of allUsers) {
+        if (employee.role === 'employee') {
+          const history = await storage.getEmployeeGameHistory(employee.id, start, end);
+          allHistory.push(...history);
         }
-        gameHistory = await storage.getGameHistory(user.shopId);
       }
 
-      res.json(gameHistory);
+      res.json(allHistory);
     } catch (error) {
       res.status(500).json({ message: "Failed to get game history" });
     }
@@ -2553,8 +2433,8 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
         return res.status(403).json({ message: "Access denied" });
       }
 
-      // Get active game by shop instead of by employee
-      const activeGame = await storage.getActiveGameByShop(user.shopId!);
+      // Get active game by employee instead of by shop
+      const activeGame = await storage.getActiveGameByEmployee(user.id);
       res.json(activeGame);
     } catch (error) {
       console.error("Get active game error:", error);
@@ -3378,7 +3258,7 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
       // Only reset games if user is employee or admin (not collector)
       if (user.role === 'employee' || user.role === 'admin') {
         // Reset any games in the shop (including completed ones after winner declaration)
-        const activeGame = await storage.getActiveGameByShop(shopId);
+        const activeGame = await storage.getActiveGameByEmployee(user.id);
 
         // If no active game found, check for recently completed games (within last hour)
         let gameToReset = activeGame;

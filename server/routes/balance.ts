@@ -1,7 +1,7 @@
 
 import { Router } from "express";
 import { db } from "../db";
-import { shops, balanceRedemptions, transactions } from "@shared/schema";
+import { users, balanceRedemptions, transactions } from "@shared/schema-simple";
 import { eq } from "drizzle-orm";
 import * as crypto from "crypto";
 import * as fs from "fs";
@@ -36,10 +36,10 @@ router.post("/redeem", async (req, res) => {
             return res.status(400).json({ error: "Missing payload or signature" });
         }
 
-        const { amount, shopId, nonce, timestamp } = payload;
+        const { amount, employeeId, nonce, timestamp } = payload;
 
         // 1. Verify Structure
-        if (!amount || !shopId || !nonce || !timestamp) {
+        if (!amount || !employeeId || !nonce || !timestamp) {
             return res.status(400).json({ error: "Invalid payload structure" });
         }
 
@@ -47,8 +47,8 @@ router.post("/redeem", async (req, res) => {
         // Let's set a generous window if needed, but nonce check is better.
 
         // 3. Verify Signature
-        // Reconstruct data string: amount:shopId:nonce:timestamp
-        const dataToVerify = `${amount}:${shopId}:${nonce}:${timestamp}`;
+        // Reconstruct data string: amount:employeeId:nonce:timestamp
+        const dataToVerify = `${amount}:${employeeId}:${nonce}:${timestamp}`;
         const isVerified = crypto.verify(
             "sha256",
             Buffer.from(dataToVerify),
@@ -71,30 +71,25 @@ router.post("/redeem", async (req, res) => {
 
         // 5. Execute Redemption
         await db.transaction(async (tx) => {
-            // 5a. Get current shop balance
-            const shop = await tx.query.shops.findFirst({
-                where: eq(shops.id, shopId),
+            // 5a. Get current employee balance
+            const employee = await tx.query.users.findFirst({
+                where: eq(users.id, employeeId),
             });
 
-            if (!shop) {
-                throw new Error("Shop not found");
+            if (!employee) {
+                throw new Error("Employee not found");
             }
 
-            // Match shopId from token with user's shopId?
-            // Assuming caller is authorized for this shop. 
-            // Ideally check req.user.shopId === shopId.
-            // But let's assume valid token means valid action for that shop.
-
-            const newBalance = (parseFloat(shop.balance?.toString() || "0") + parseFloat(amount)).toFixed(2);
+            const newBalance = (parseFloat(employee.balance?.toString() || "0") + parseFloat(amount)).toFixed(2);
 
             // 5b. Update Balance
-            await tx.update(shops)
+            await tx.update(users)
                 .set({ balance: newBalance })
-                .where(eq(shops.id, shopId));
+                .where(eq(users.id, employeeId));
 
             // 5c. Log Redemption
             await tx.insert(balanceRedemptions).values({
-                shopId,
+                employeeId,
                 amount: amount.toString(),
                 signature,
                 redeemedBy: req.session.user?.id,
@@ -102,11 +97,10 @@ router.post("/redeem", async (req, res) => {
 
             // 5d. Log Transaction
             await tx.insert(transactions).values({
-                shopId,
+                employeeId: req.session.user?.id,
                 amount: amount.toString(),
                 type: 'credit_load',
                 description: `Balance redemption via file. Nonce: ${nonce}`,
-                adminId: req.session.user?.id,
             });
         });
 

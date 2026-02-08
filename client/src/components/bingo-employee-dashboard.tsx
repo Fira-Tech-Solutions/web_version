@@ -2,12 +2,14 @@ import { useState, useEffect, useRef } from "react";
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Upload, X, Settings, Trophy, Eye, EyeOff, Edit } from "lucide-react";
 import { customBingoVoice } from "@/lib/custom-voice-synthesis";
+import Papa from 'papaparse';
 
 interface BingoEmployeeDashboardProps {
   onLogout: () => void;
@@ -34,6 +36,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const [rechargeFile, setRechargeFile] = useState<File | null>(null);
   const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
   const [expandedCard, setExpandedCard] = useState<number | null>(null);
+  const [previewCard, setPreviewCard] = useState<any | null>(null);
   const [isCallingNumber, setIsCallingNumber] = useState(false);
   const [isAutoCalling, setIsAutoCalling] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -48,6 +51,208 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const [isShuffling, setIsShuffling] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState<string>("arada");
   const autoCallInterval = useRef<NodeJS.Timeout | null>(null);
+
+  // Cartela Management state
+  const [showCartelaManagement, setShowCartelaManagement] = useState(false);
+  const [cartelaSearchTerm, setCartelaSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [manualCartelaGrid, setManualCartelaGrid] = useState<number[][]>([]);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [activeTab, setActiveTab] = useState<'import' | 'manual' | 'builder' | 'table'>('import');
+
+  // CSV Import mutation
+  const csvImportMutation = useMutation({
+    mutationFn: async (cartelaData: any[]) => {
+      const response = await fetch('/api/cartelas/import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ cartelas: cartelaData }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to import cartelas');
+      }
+      
+      return response.json();
+    },
+    onSuccess: (data) => {
+      // Show detailed import status
+      if (data.success) {
+        let message = data.imported > 0 
+          ? `Successfully imported ${data.imported} cartelas`
+          : "No cartelas were imported";
+        
+        if (data.errors && data.errors.length > 0) {
+          message += ` (${data.errors.length} failed)`;
+        }
+        
+        toast({
+          title: "CSV Import Complete",
+          description: message,
+          variant: "default"
+        });
+        
+        // Show error details in console for debugging
+        if (data.errors && data.errors.length > 0) {
+          console.log('Import errors:', data.errors);
+        }
+      } else {
+        toast({
+          title: "CSV Import Failed",
+          description: "Failed to import cartelas",
+          variant: "destructive"
+        });
+      }
+      
+      // Reset form
+      setCsvFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      
+      // Refresh cartelas list
+      queryClient.invalidateQueries({ queryKey: ['/api/cartelas'] });
+    },
+    onError: (error) => {
+      toast({
+        title: "CSV Import Failed",
+        description: error.message || "Failed to import cartelas. Please check the file format.",
+        variant: "destructive"
+      });
+    },
+  });
+
+  // Handle CSV Import
+  const handleCSVImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setCsvFile(file);
+    }
+  };
+
+  // Process CSV file (separate from file input handler)
+  const processCSVImport = () => {
+    if (!csvFile) return;
+
+    Papa.parse(csvFile, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        try {
+          const cartelaData = results.data.map((row: any) => {
+            // Parse CSV row according to format: cno,user_id,card_no,b,i,n,g,o
+            const cno = parseInt(row.cno);
+            const userId = parseInt(row.user_id);
+            const cardNo = parseInt(row.card_no);
+            
+            // Parse B,I,N,G,O columns from string arrays to number arrays
+            // Each column contains all values for that column (column-based format)
+            const b = row.b ? row.b.split(',').map((n: string) => parseInt(n.trim())) : [];
+            const i = row.i ? row.i.split(',').map((n: string) => parseInt(n.trim())) : [];
+            const n = row.n ? row.n.split(',').map((n: string) => parseInt(n.trim())) : [];
+            const g = row.g ? row.g.split(',').map((n: string) => parseInt(n.trim())) : [];
+            const o = row.o ? row.o.split(',').map((n: string) => parseInt(n.trim())) : [];
+            
+            // Combine into 5x5 grid (5 rows x 5 columns)
+            // Each array contains all values for that column
+            const grid: number[][] = [];
+            for (let row = 0; row < 5; row++) {
+              grid[row] = [
+                b[row] || 0,  // B column value for this row
+                i[row] || 0,  // I column value for this row
+                n[row] || 0,  // N column value for this row
+                g[row] || 0,  // G column value for this row
+                o[row] || 0   // O column value for this row
+              ];
+            }
+
+            return {
+              cno,
+              userId,
+              cardNo,
+              grid: JSON.stringify(grid)
+            };
+          });
+
+          csvImportMutation.mutate(cartelaData);
+        } catch (error) {
+          toast({
+            title: "CSV Parse Error",
+            description: "Failed to parse CSV file. Please check the format.",
+            variant: "destructive"
+          });
+        }
+      },
+      error: (error) => {
+        toast({
+          title: "CSV Read Error",
+          description: "Failed to read CSV file",
+          variant: "destructive"
+        });
+      }
+    });
+  };
+
+  // Save Manual Cartela mutation
+  const saveManualCartelaMutation = useMutation({
+    mutationFn: async (grid: number[][]) => {
+      const response = await fetch('/api/cartelas/manual', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ grid }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to save manual cartela');
+      }
+      
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Manual Cartela Saved",
+        description: `Successfully saved cartela with serial ${data.cno}`
+      });
+      setManualCartelaGrid([]);
+      queryClient.invalidateQueries({ queryKey: ['/api/cartelas'] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Save Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Handle Save Manual Cartela
+  const handleSaveManualCartela = () => {
+    // Validate the grid
+    if (manualCartelaGrid.length !== 5 || manualCartelaGrid.some(row => row.length !== 5)) {
+      toast({
+        title: "Invalid Grid",
+        description: "Please fill in all 25 cells of the bingo grid",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Check if the center cell (N3) is 0 (free space)
+    if (manualCartelaGrid[2][2] !== 0) {
+      toast({
+        title: "Invalid Grid",
+        description: "The center cell (N3) must be 0 (Free Space)",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    saveManualCartelaMutation.mutate(manualCartelaGrid);
+  };
 
   // Initialize voice selection
   useEffect(() => {
@@ -124,22 +329,16 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     }
   }, [activeGame]);
 
-  // Shop data query
-  const { data: shopData } = useQuery({
-    queryKey: [`/api/shops/${user?.shopId}`],
-    enabled: !!user?.shopId,
-  });
-
-  // Cartelas query
-  const { data: cartelas } = useQuery({
-    queryKey: ['/api/cartelas', user?.shopId],
+  // Helper function to get letter for number
+  const { data: cartelas, isLoading: cartelasQueryLoading } = useQuery({
+    queryKey: ['/api/cartelas', user?.id],
     queryFn: async () => {
-      if (!user?.shopId) return [];
-      const response = await fetch(`/api/cartelas/${user.shopId}`);
+      if (!user?.id) return [];
+      const response = await fetch(`/api/cartelas/${user.id}`);
       if (!response.ok) return [];
       return response.json();
     },
-    enabled: !!user?.shopId,
+    enabled: !!user?.id, // Only enabled when user is logged in
   });
 
   // Helper function to get letter for number
@@ -170,65 +369,8 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     if (num >= 16 && num <= 30) return "from-red-500 to-red-700";
     if (num >= 31 && num <= 45) return "from-white to-gray-200";
     if (num >= 46 && num <= 60) return "from-green-500 to-green-700";
-    if (num >= 61 && num <= 75) return "from-yellow-400 to-yellow-600";
-    return "from-gray-400 to-gray-600";
-  };
-
-  // CSV Import handler
-  const handleCSVImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const content = ev.target?.result as string;
-        // Process CSV content here
-        toast({
-          title: "CSV Imported",
-          description: "Card data loaded successfully"
-        });
-      };
-      reader.readAsText(file);
-    }
-  };
-
-  // Top-up file handler
-  const handleTopUpFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && file.name.endsWith('.enc')) {
-      setRechargeFile(file);
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const content = ev.target?.result as string;
-        // Process .enc file for balance update
-        fetch('/api/recharge/topup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ encryptedData: content })
-        })
-          .then(response => response.json())
-          .then(result => {
-            toast({
-              title: "Balance Updated",
-              description: `Added ${result.amount} ETB. New balance: ${result.balance} ETB`
-            });
-            queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
-          })
-          .catch(error => {
-            toast({
-              title: "Top-up Failed",
-              description: error.message,
-              variant: "destructive"
-            });
-          });
-      };
-      reader.readAsText(file);
-    } else {
-      toast({
-        title: "Invalid File",
-        description: "Please select a .enc file",
-        variant: "destructive"
-      });
-    }
+    if (num >= 61 && num <= 75) return "from-yellow-500 to-yellow-700";
+    return "from-gray-500 to-gray-700";
   };
 
   // Call number handler with voice synthesis
@@ -466,9 +608,56 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     });
   };
 
+  // Render card grid for preview
+  const renderCardGrid = (card: any) => {
+    const cardNumbers = card.pattern;
+    if (!cardNumbers || !Array.isArray(cardNumbers)) {
+      return (
+        <div className="col-span-5 text-center text-gray-500 py-8">
+          No card data available
+        </div>
+      );
+    }
+
+    // Create rows of 5 cells each
+    return Array.from({ length: 5 }, (_, row) => (
+      <div key={row} className="grid grid-cols-5 gap-1 mb-1">
+        {Array.from({ length: 5 }, (_, col) => {
+          const isFreeSpace = row === 2 && col === 2; // Center space
+          const number = cardNumbers[row]?.[col];
+
+          return (
+            <div
+              key={col}
+              className={`w-12 h-12 border-2 flex items-center justify-center text-lg font-bold rounded ${
+                isFreeSpace 
+                  ? 'bg-yellow-400 text-black border-yellow-600' 
+                  : number && number > 0
+                    ? 'bg-white border-gray-300 text-gray-800'
+                    : 'bg-gray-100 border-gray-200 text-gray-400'
+              }`}
+            >
+              {isFreeSpace ? '★' : (number || '')}
+            </div>
+          );
+        })}
+      </div>
+    ));
+  };
+
   // Generate bingo card numbers for display
   const generateCardNumbers = (cardNum: number): number[][] => {
-    // Use a deterministic seed based on card number for consistent display
+    // First try to get grid pattern from cartelas
+    const masterCartela = cartelas?.find((c: any) => c.cardNo === cardNum);
+    if (masterCartela && masterCartela.pattern) {
+      try {
+        return typeof masterCartela.pattern === 'string' ? JSON.parse(masterCartela.pattern) : masterCartela.pattern;
+      } catch (error) {
+        console.error('Error parsing cartela pattern:', error);
+      }
+    }
+
+    // Fallback to generated grid if master cartela not found
     const seed = cardNum * 12345;
     const random = (min: number, max: number) => {
       const x = Math.sin(seed + min + max) * 10000;
@@ -873,47 +1062,49 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                       <Edit className="w-4 h-4 mr-2" />
                       {isEditMode ? 'Done Editing' : 'Edit'}
                     </Button>
-                    <label className="cursor-pointer">
-                      <input
-                        type="file"
-                        accept=".csv"
-                        onChange={handleCSVImport}
-                        className="hidden"
-                      />
-                      <Button className="bg-green-600 hover:bg-green-700 text-white">
+                    <Button 
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                      onClick={() => setShowCartelaManagement(true)}
+                    >
                         <Upload className="w-4 h-4 mr-2" />
-                        CSV Import
+                        Cartela Management
                       </Button>
-                    </label>
                   </div>
                 </div>
 
                 {/* Circular Card Grid */}
-                <div className="grid grid-cols-11 gap-2 p-4">
-                  {Array.from({ length: 100 }, (_, i) => i + 1).map((cardNum) => {
-                    const isSelected = selectedCards.has(cardNum);
-                    const isBeingEdited = editingCard === cardNum;
-                    return (
-                      <div key={cardNum} className="relative">
-                        <button
-                          onClick={() => {
-                            if (isEditMode) {
-                              // In edit mode, open edit dialog
-                              setEditingCard(cardNum);
-                            } else {
-                              // In normal mode, toggle selection
-                              const newSelected = new Set(selectedCards);
-                              if (isSelected) {
-                                newSelected.delete(cardNum);
-                              } else {
-                                newSelected.add(cardNum);
-                              }
-                              setSelectedCards(newSelected);
-                            }
-                          }}
-                          className={`
-                            w-14 h-14 rounded-full flex items-center justify-center
-                            font-bold text-xl transition-all duration-200
+                <div className="p-4">
+                  {cartelasQueryLoading ? (
+                    <div className="text-center py-8">
+                      <div className="text-white">Loading cartelas...</div>
+                    </div>
+                  ) : cartelas && cartelas.length > 0 ? (
+                    <div className="grid grid-cols-11 gap-2">
+                      {cartelas.map((cartela: any) => {
+                        const cardNum = cartela.cardNo; // Use cardNo instead of cartelaNumber
+                        const isSelected = selectedCards.has(cardNum);
+                        const isBeingEdited = editingCard === cardNum;
+                        return (
+                          <div key={`${cartela.employeeId}-${cardNum}`} className="relative">
+                            <button
+                              onClick={() => {
+                                if (isEditMode) {
+                                  // In edit mode, open edit dialog
+                                  setEditingCard(cardNum);
+                                } else {
+                                  // In normal mode, toggle selection
+                                  const newSelected = new Set(selectedCards);
+                                  if (isSelected) {
+                                    newSelected.delete(cardNum);
+                                  } else {
+                                    newSelected.add(cardNum);
+                                  }
+                                  setSelectedCards(newSelected);
+                                }
+                              }}
+                              className={`
+                                w-14 h-14 rounded-full flex items-center justify-center
+                                font-bold text-xl transition-all duration-200
                             border-4
                             ${isBeingEdited
                               ? 'bg-orange-600 text-white border-orange-400 shadow-lg shadow-orange-400/50 scale-110 animate-pulse'
@@ -941,6 +1132,15 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                       </div>
                     );
                   })}
+                </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <div className="text-white text-lg mb-4">No stored cartelas available</div>
+                      <div className="text-gray-400 text-sm">
+                        Please import cartelas using the Cartela Management button above
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1644,32 +1844,20 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                 </div>
 
                 {/* Number Grid */}
-                {generateCardNumbersWithCalled(expandedCard).map((row, rowIdx) => (
-                  <div key={rowIdx} className="grid grid-cols-5 gap-2 mb-2 last:mb-0">
-                    {row.map((num, colIdx) => {
-                      const isCalled = num < 0;
-                      const displayNum = Math.abs(num);
-                      const isWinner = checkCardWinner(expandedCard).isWinner;
-                      
+                <div className="grid grid-cols-5 gap-1 mb-6">
+                  {/* Card Numbers */}
+                  {(() => {
+                    const cartela = cartelas?.find((c: any) => c.cardNo === expandedCard);
+                    if (!cartela) {
                       return (
-                        <div
-                          key={colIdx}
-                          className={`text-lg font-bold text-center py-3 rounded border-2 transition-all duration-300 ${
-                            displayNum === 0
-                              ? 'bg-yellow-400 text-black border-yellow-500'
-                              : isCalled
-                                ? isWinner
-                                  ? 'bg-green-500 text-white border-green-600 shadow-lg shadow-green-400/50 animate-pulse'
-                                  : 'bg-blue-500 text-white border-blue-600'
-                                : 'bg-white text-gray-800 border-gray-300 hover:bg-gray-50'
-                          }`}
-                        >
-                          {displayNum === 0 ? '★' : displayNum}
+                        <div className="col-span-5 text-center text-gray-500 py-8">
+                          Cartela not found
                         </div>
                       );
-                    })}
-                  </div>
-                ))}
+                    }
+                    return renderCardGrid(cartela);
+                  })()}
+                </div>
               </div>
 
               {/* Action Buttons */}
@@ -1694,6 +1882,328 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                 <Button
                   onClick={() => setExpandedCard(null)}
                   className="flex-1 bg-gray-600 hover:bg-gray-700 text-white"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cartela Management Modal */}
+      {showCartelaManagement && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[70] p-4">
+          <div className="bg-white text-black rounded-lg shadow-2xl max-w-7xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="bg-gray-800 text-white px-6 py-4 flex justify-between items-center">
+              <h2 className="text-2xl font-bold">Cartela Management Panel</h2>
+              <button 
+                onClick={() => setShowCartelaManagement(false)}
+                className="hover:text-red-400 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Import Section */}
+              <div className="mb-8">
+                <h3 className="text-xl font-bold mb-4 text-gray-800">Import Features</h3>
+                <div className="grid grid-cols-1 gap-6">
+                  {/* CSV Import */}
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
+                    <h4 className="text-lg font-semibold mb-3">CSV Import</h4>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Format: cno,user_id,card_no,b,i,n,g,o
+                    </p>
+                    <input
+                      type="file"
+                      accept=".csv"
+                      onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
+                      className="mb-4 w-full p-2 border rounded"
+                    />
+                    <Button 
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                      disabled={!csvFile || csvImportMutation.isPending}
+                      onClick={processCSVImport}
+                    >
+                      {csvImportMutation.isPending ? 'Importing...' : 'Import CSV'}
+                    </Button>
+                  </div>
+
+                  {/* Manual Cartela Builder */}
+                  <div className="border-2 border-gray-300 rounded-lg p-6">
+                    <h4 className="text-lg font-semibold mb-3">Manual Cartela Builder</h4>
+                    <div className="grid grid-cols-5 gap-2 mb-4 max-w-sm mx-auto">
+                      {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => (
+                        <div key={letter} className="text-center font-bold text-lg">
+                          {letter}
+                        </div>
+                      ))}
+                      {Array.from({ length: 25 }, (_, i) => {
+                        const row = Math.floor(i / 5);
+                        const col = i % 5;
+                        const isFreeSpace = row === 2 && col === 2;
+                        
+                        return (
+                          <input
+                            key={i}
+                            type="number"
+                            value={isFreeSpace ? 0 : (manualCartelaGrid[row]?.[col] || '')}
+                            disabled={isFreeSpace}
+                            placeholder={isFreeSpace ? '★' : ''}
+                            className={`w-full p-2 border rounded text-center font-bold ${
+                              isFreeSpace 
+                                ? 'bg-yellow-400 text-black cursor-not-allowed' 
+                                : 'bg-white border-gray-300'
+                            }`}
+                            onChange={(e) => {
+                              const newGrid = [...manualCartelaGrid];
+                              if (!newGrid[row]) newGrid[row] = [];
+                              newGrid[row][col] = isFreeSpace ? 0 : parseInt(e.target.value) || 0;
+                              setManualCartelaGrid(newGrid);
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                    <div className="text-center">
+                      <Button 
+                        className="bg-purple-600 hover:bg-purple-700 text-white"
+                        disabled={saveManualCartelaMutation.isPending}
+                        onClick={handleSaveManualCartela}
+                      >
+                        {saveManualCartelaMutation.isPending ? 'Saving...' : 'Save Manual Card'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Visual Cartela Builder */}
+              <div className="mb-8">
+                <h3 className="text-xl font-bold mb-4 text-gray-800">Visual Cartela Builder</h3>
+                <div className="border-2 border-gray-300 rounded-lg p-6">
+                  <div className="grid grid-cols-5 gap-2 mb-4 max-w-sm mx-auto">
+                    {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => (
+                      <div key={letter} className="text-center font-bold text-lg">
+                        {letter}
+                      </div>
+                    ))}
+                    {Array.from({ length: 25 }, (_, i) => {
+                      const row = Math.floor(i / 5);
+                      const col = i % 5;
+                      const isFreeSpace = row === 2 && col === 2;
+                      
+                      return (
+                        <input
+                          key={i}
+                          type="number"
+                          value={isFreeSpace ? 0 : (manualCartelaGrid[row]?.[col] || '')}
+                          disabled={isFreeSpace}
+                          placeholder={isFreeSpace ? '★' : ''}
+                          className={`w-full p-2 border rounded text-center font-bold ${
+                            isFreeSpace 
+                              ? 'bg-yellow-400 text-black cursor-not-allowed' 
+                              : 'bg-white border-gray-300'
+                          }`}
+                          onChange={(e) => {
+                            const newGrid = [...manualCartelaGrid];
+                            if (!newGrid[row]) newGrid[row] = [];
+                            newGrid[row][col] = isFreeSpace ? 0 : parseInt(e.target.value) || 0;
+                            setManualCartelaGrid(newGrid);
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                  <div className="text-center">
+                    <Button 
+                      className="bg-purple-600 hover:bg-purple-700 text-white"
+                      disabled={saveManualCartelaMutation.isPending}
+                      onClick={handleSaveManualCartela}
+                    >
+                      {saveManualCartelaMutation.isPending ? 'Saving...' : 'Save Manual Card'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Master Table View */}
+              <div className="mb-8">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xl font-bold text-gray-800">Master Cartela Table</h3>
+                  {cartelas && cartelas.length > 0 && (
+                    <div className="text-sm text-green-600 bg-green-50 px-3 py-1 rounded-full">
+                      {cartelas.length} cartelas available
+                    </div>
+                  )}
+                </div>
+                <div className="border-2 border-gray-300 rounded-lg p-6">
+                  {/* Search */}
+                  <div className="mb-4">
+                    <Input
+                      placeholder="Search cartelas..."
+                      value={cartelaSearchTerm}
+                      onChange={(e) => setCartelaSearchTerm(e.target.value)}
+                      className="max-w-md"
+                    />
+                  </div>
+                  
+                  {/* Table */}
+                  <div className="overflow-x-auto">
+                    {cartelasQueryLoading ? (
+                      <div className="text-center py-8">
+                        <div className="text-gray-500">Loading cartelas...</div>
+                      </div>
+                    ) : cartelas && cartelas.length > 0 ? (
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr className="bg-gray-100">
+                            <th className="border border-gray-300 px-4 py-2 text-left">Card Number</th>
+                            <th className="border border-gray-300 px-4 py-2 text-left">Name</th>
+                            <th className="border border-gray-300 px-4 py-2 text-left">Preview</th>
+                            <th className="border border-gray-300 px-4 py-2 text-left">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cartelas.map((cartela: any) => (
+                            <tr key={cartela.id} className="hover:bg-gray-50">
+                              <td className="border border-gray-300 px-4 py-2 font-semibold">{cartela.cardNo}</td>
+                              <td className="border border-gray-300 px-4 py-2">{cartela.name}</td>
+                              <td className="border border-gray-300 px-4 py-2">
+                                <Button size="sm" variant="outline" onClick={() => setPreviewCard(cartela)}>
+                                  <Eye className="w-4 h-4 mr-1" />
+                                  Preview
+                                </Button>
+                              </td>
+                              <td className="border border-gray-300 px-4 py-2">
+                                <div className="flex gap-2">
+                                  <Button size="sm" variant="outline">
+                                    <Edit className="w-4 h-4 mr-1" />
+                                    Edit
+                                  </Button>
+                                  <Button size="sm" variant="destructive">
+                                    Delete
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="text-center py-8">
+                        <div className="text-gray-500 mb-2">No cartelas found</div>
+                        <div className="text-sm text-gray-400">
+                          Import cartelas using the CSV Import tab to see them here
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Status Summary */}
+                  {cartelas && cartelas.length > 0 && (
+                    <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                      <div className="text-sm text-blue-800">
+                        Showing all {cartelas.length} imported cartelas
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Card Preview Modal */}
+      {previewCard && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[80] p-4">
+          <div className="bg-white text-black rounded-lg shadow-2xl max-w-md w-full">
+            {/* Header */}
+            <div className="bg-white px-4 py-3 rounded-t-lg flex justify-between items-center border-b">
+              <h2 className="text-xl font-bold text-black">Card #{previewCard.cardNo}</h2>
+              <button
+                onClick={() => setPreviewCard(null)}
+                className="text-gray-600 hover:text-gray-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Card Content */}
+            <div className="p-6 bg-gray-50">
+              <div className="text-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-700">Card Layout</h3>
+              </div>
+              
+              <div className="bg-white rounded-lg p-4 mx-auto border-2 border-gray-300" style={{ maxWidth: '350px' }}>
+                {/* Column Headers */}
+                <div className="grid grid-cols-5 gap-2 mb-2">
+                  {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+                    <div key={letter} className="text-center font-bold text-sm text-gray-700">
+                      {letter}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Number Grid */}
+                <div className="space-y-1">
+                  {(() => {
+                    const cartela = cartelas?.find((c: any) => c.cardNo === previewCard.cardNo);
+                    if (!cartela) {
+                      return (
+                        <div className="col-span-5 text-center text-gray-500 py-8">
+                          Cartela not found
+                        </div>
+                      );
+                    }
+                    
+                    const cardNumbers = cartela.pattern;
+                    if (!cardNumbers || !Array.isArray(cardNumbers)) {
+                      return (
+                        <div className="col-span-5 text-center text-gray-500 py-8">
+                          No card data available
+                        </div>
+                      );
+                    }
+
+                    // Create rows of 5 cells each
+                    return Array.from({ length: 5 }, (_, row) => (
+                      <div key={row} className="grid grid-cols-5 gap-1">
+                        {Array.from({ length: 5 }, (_, col) => {
+                          const isFreeSpace = row === 2 && col === 2; // Center space
+                          const number = cardNumbers[row]?.[col];
+
+                          return (
+                            <div
+                              key={col}
+                              className={`w-full aspect-square border-2 flex items-center justify-center text-base font-bold rounded ${
+                                isFreeSpace 
+                                  ? 'bg-yellow-400 text-black border-yellow-600' 
+                                  : number && number > 0
+                                    ? 'bg-white border-blue-900 text-blue-900'
+                                    : 'bg-gray-100 border-gray-200 text-gray-400'
+                              }`}
+                            >
+                              {isFreeSpace ? '★' : (number || '')}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </div>
+
+              {/* Close Button */}
+              <div className="mt-6 text-center">
+                <Button
+                  onClick={() => setPreviewCard(null)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2"
                 >
                   Close
                 </Button>

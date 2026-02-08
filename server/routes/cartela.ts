@@ -1,14 +1,14 @@
 import { Router } from "express";
-import { db } from "../db";
-import { cartelas } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc, count, like, ilike, or } from "drizzle-orm";
+import { db } from "../db/index.js";
+import { cartelas, users } from "../../shared/schema-simple.js";
 import { loadHardcodedCartelas } from "../lib/cartela-loader";
 
 const router = Router();
 
 // Function to log cartela updates (WebSocket temporarily disabled)
-function logCartelaUpdate(shopId: number) {
-  console.log(`Cartela updated for shop ${shopId} at ${new Date().toISOString()}`);
+function logCartelaUpdate(employeeId: number) {
+  console.log(`Cartela updated for employee ${employeeId} at ${new Date().toISOString()}`);
 }
 
 // Parse bulk cartela input
@@ -83,49 +83,91 @@ function parseBulkCartelaData(bulkData: string) {
   return results;
 }
 
-// GET /api/cartelas/:shopId - Get all cartelas for a shop
-router.get("/:shopId", async (req, res) => {
+// GET /api/cartelas/master - Master table view
+router.get("/master", async (req, res) => {
   try {
-    const shopId = parseInt(req.params.shopId);
+    const { search = "", page = "1", limit = "10" } = req.query;
+    
+    // Validate pagination parameters
+    const pageNum = parseInt(page as string);
+    const limitNum = parseInt(limit as string);
+    
+    if (isNaN(pageNum) || isNaN(limitNum) || pageNum < 1 || limitNum < 1) {
+      return res.status(400).json({ error: "Invalid pagination parameters" });
+    }
+    
+    const offset = (pageNum - 1) * limitNum;
+
+    let query = db.select().from(cartelas);
+    
+    if (search && typeof search === "string" && search.trim()) {
+      // TODO: Add search conditions - for now just continue without search
+      console.log('Search parameter ignored:', search);
+    }
+
+    const cartelasResult = await query
+      .limit(limitNum)
+      .offset(offset)
+      .orderBy(cartelas.cartelaNumber);
+
+    // Add cardNo field for frontend compatibility
+    const cartelasWithCardNo = cartelasResult.map(cartela => ({
+      ...cartela,
+      cardNo: cartela.cardNo || cartela.cartelaNumber, // Use cardNo if available, fallback to cartelaNumber
+      cartelaNumber: cartela.cartelaNumber, // Keep for reference
+      cno: cartela.cartelaNumber, // Keep for compatibility
+    }));
+
+    const totalResult = await db.select({ count: count() }).from(cartelas);
+    const total = totalResult[0]?.count || 0;
+
+    res.json({
+      cartelas: cartelasWithCardNo,
+      total,
+      page: pageNum,
+      totalPages: Math.ceil(total / limitNum)
+    });
+  } catch (error) {
+    console.error('Master cartelas error:', error);
+    res.status(500).json({ error: "Failed to fetch cartelas" });
+  }
+});
+
+// GET /api/cartelas/:employeeId - Get all cartelas for an employee
+router.get("/:employeeId", async (req, res) => {
+  try {
+    const employeeIdParam = req.params.employeeId;
+    const employeeId = employeeIdParam === 'undefined' || employeeIdParam === 'NaN' || isNaN(parseInt(employeeIdParam)) ? undefined : parseInt(employeeIdParam);
+
+    console.log(`Cartela request for employeeId: ${employeeId} (raw param: ${employeeIdParam})`);
 
     // Disable caching to ensure fresh data
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
 
-    const shopCartelas = await db
+    if (!employeeId) {
+      console.log('Invalid employeeId provided, returning empty array');
+      return res.json([]);
+    }
+
+    const employeeCartelas = await db
       .select()
       .from(cartelas)
-      .where(eq(cartelas.shopId, shopId))
+      .where(eq(cartelas.employeeId, employeeId))
       .orderBy(cartelas.cartelaNumber);
 
-    console.log(`Fetched ${shopCartelas.length} cartelas for shop ${shopId}`);
+    console.log(`Fetched ${employeeCartelas.length} cartelas for employee ${employeeId}`);
 
     // Parse JSON strings back to arrays for frontend
-    const parsedCartelas = shopCartelas.map(cartela => ({
+    const parsedCartelas = employeeCartelas.map(cartela => ({
       ...cartela,
       pattern: typeof cartela.pattern === 'string' ? JSON.parse(cartela.pattern) : cartela.pattern,
-      numbers: typeof cartela.numbers === 'string' ? JSON.parse(cartela.numbers) : cartela.numbers,
+      // Use actual cardNo from database
+      cardNo: cartela.cardNo,
+      cartelaNumber: cartela.cartelaNumber, // Keep for reference
+      cno: cartela.cartelaNumber, // Keep for compatibility
     }));
-
-    // Debug: Log all cartelas to verify data structure and marked cartelas
-    console.log(`🔍 CARTELA API DEBUG - Total cartelas: ${parsedCartelas.length}`);
-
-    const markedCartelas = parsedCartelas.filter(c => c.collectorId !== null || c.bookedBy !== null);
-    console.log(`📊 MARKED CARTELAS for shop ${shopId} (${markedCartelas.length} total):`, markedCartelas.map(c => ({
-      number: c.cartelaNumber,
-      collectorId: c.collectorId,
-      bookedBy: c.bookedBy,
-      source: c.collectorId !== null ? 'collector' : (c.bookedBy !== null ? 'employee' : 'none')
-    })));
-
-    // Also log first few cartelas to verify data structure
-    console.log(`🔍 FIRST 3 CARTELAS structure:`, parsedCartelas.slice(0, 3).map(c => ({
-      id: c.id,
-      number: c.cartelaNumber,
-      collectorId: c.collectorId,
-      bookedBy: c.bookedBy
-    })));
 
     res.json(parsedCartelas);
   } catch (error) {
@@ -137,62 +179,37 @@ router.get("/:shopId", async (req, res) => {
 // POST /api/cartelas - Create new cartela
 router.post("/", async (req, res) => {
   try {
-    const { shopId, adminId, cartelaNumber, name, pattern, numbers } = req.body;
+    const { employeeId, cartelaNumber, name, pattern } = req.body;
 
-    // Check if cartela number already exists for this shop
+    // Check if cartela number already exists for this employee
     const existing = await db
       .select()
       .from(cartelas)
       .where(
         and(
-          eq(cartelas.shopId, shopId),
+          eq(cartelas.employeeId, employeeId),
           eq(cartelas.cartelaNumber, cartelaNumber)
         )
       )
       .limit(1);
 
     if (existing.length > 0) {
-      // Update existing cartela instead of creating new one
-      const [updatedCartela] = await db
-        .update(cartelas)
-        .set({
-          name,
-          pattern: JSON.stringify(pattern),
-          numbers: JSON.stringify(numbers),
-          isHardcoded: false, // Mark as custom when updated
-        })
-        .where(eq(cartelas.id, existing[0].id))
-        .returning();
-
-      // Parse the response back to arrays
-      const parsedCartela = {
-        ...updatedCartela,
-        pattern: typeof updatedCartela.pattern === 'string' ? JSON.parse(updatedCartela.pattern) : updatedCartela.pattern,
-        numbers: typeof updatedCartela.numbers === 'string' ? JSON.parse(updatedCartela.numbers) : updatedCartela.numbers,
-      };
-
-      // Log cartela update
-      logCartelaUpdate(shopId);
-
-      return res.json(parsedCartela);
+      return res.status(400).json({ error: "Cartela number already exists for this employee" });
     }
 
     const [newCartela] = await db
       .insert(cartelas)
       .values({
-        shopId,
-        adminId,
+        employeeId,
         cartelaNumber,
-        name,
+        name: name || `Cartela ${cartelaNumber}`,
         pattern: JSON.stringify(pattern),
-        numbers: JSON.stringify(numbers),
         isHardcoded: false,
         isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       })
       .returning();
-
-    // Log cartela update
-    logCartelaUpdate(shopId);
 
     res.json(newCartela);
   } catch (error) {
@@ -279,65 +296,67 @@ router.delete("/:id", async (req, res) => {
 // POST /api/cartelas/bulk-import - Bulk import cartelas
 router.post("/bulk-import", async (req, res) => {
   try {
-    const { shopId, adminId, bulkData } = req.body;
+    const { employeeId, adminId, bulkData } = req.body;
 
     const parsed = parseBulkCartelaData(bulkData);
     let updated = 0;
-    let added = 0;
-    const skipped = parsed.invalid.length;
+    let errors = [];
 
     for (const cartelaData of parsed.valid) {
       try {
-        // Check if cartela exists
+        // Check if cartela already exists for this employee
         const existing = await db
           .select()
           .from(cartelas)
           .where(
             and(
-              eq(cartelas.shopId, shopId),
+              eq(cartelas.employeeId, employeeId),
               eq(cartelas.cartelaNumber, cartelaData.cartelaNumber)
             )
           )
           .limit(1);
 
         if (existing.length > 0) {
-          // Update existing
+          // Update existing cartela
           await db
             .update(cartelas)
             .set({
               name: cartelaData.name,
               pattern: cartelaData.pattern,
-              numbers: cartelaData.numbers,
-              updatedAt: new Date(),
+              isHardcoded: false, // Mark as custom when updated
             })
-            .where(eq(cartelas.id, existing[0].id));
+            .where(and(
+              eq(cartelas.employeeId, employeeId),
+              eq(cartelas.cartelaNumber, cartelaData.cartelaNumber)
+            ))
+            .returning();
+
           updated++;
         } else {
-          // Insert new
+          // Insert new cartela
           await db
             .insert(cartelas)
             .values({
-              shopId,
+              employeeId,
               adminId,
               cartelaNumber: cartelaData.cartelaNumber,
               name: cartelaData.name,
               pattern: cartelaData.pattern,
-              numbers: cartelaData.numbers,
               isHardcoded: false,
               isActive: true,
-            });
-          added++;
+            })
+            .returning();
         }
       } catch (error) {
-        console.error(`Error processing cartela ${cartelaData.cartelaNumber}:`, error);
+        errors.push(`Failed to process cartela ${cartelaData.cartelaNumber}: ${error.message}`);
       }
     }
 
     res.json({
       updated,
-      added,
-      skipped,
-      errors: parsed.invalid,
+      added: parsed.valid.length - updated,
+      skipped: parsed.invalid.length,
+      errors,
     });
   } catch (error) {
     console.error("Error bulk importing cartelas:", error);
@@ -345,17 +364,145 @@ router.post("/bulk-import", async (req, res) => {
   }
 });
 
-// POST /api/cartelas/load-hardcoded/:shopId - Load hardcoded cartelas for shop
-router.post("/load-hardcoded/:shopId", async (req, res) => {
+// POST /api/cartelas/load-hardcoded/:employeeId - Load hardcoded cartelas for employee
+router.post("/load-hardcoded/:employeeId", async (req, res) => {
   try {
-    const shopId = parseInt(req.params.shopId);
+    const employeeId = parseInt(req.params.employeeId);
     const { adminId } = req.body;
 
-    await loadHardcodedCartelas(shopId, adminId);
+    await loadHardcodedCartelas(employeeId, adminId);
     res.json({ message: "Hardcoded cartelas loaded successfully" });
   } catch (error) {
     console.error("Error loading hardcoded cartelas:", error);
     res.status(500).json({ error: "Failed to load hardcoded cartelas" });
+  }
+});
+
+// POST /api/cartelas/import - CSV import
+router.post("/import", async (req, res) => {
+  try {
+    const { cartelas: cartelaDataList } = req.body;
+    let imported = 0;
+    let errors = [];
+    const now = new Date(); // Date object for timestamp mode
+
+    console.log(`Starting import of ${cartelaDataList?.length || 0} cartelas`);
+
+    // Get authenticated employee ID from session
+    const user = (req as any).session?.user;
+    const defaultEmployeeId = user?.id || 1; // Fallback to 1 for now
+
+    for (const cartelaData of cartelaDataList) {
+      try {
+        // Validate cartela data before insertion
+        if (!cartelaData.cno || !cartelaData.grid) {
+          throw new Error('Missing required fields: cno or grid');
+        }
+
+        // Use user_id from CSV if provided, otherwise use authenticated user
+        const employeeId = cartelaData.user_id ? parseInt(cartelaData.user_id) : defaultEmployeeId;
+
+        // Check if cartela already exists for this employee
+        const existing = await db.select()
+          .from(cartelas)
+          .where(and(
+            eq(cartelas.employeeId, employeeId),
+            eq(cartelas.cartelaNumber, cartelaData.cno)
+          ))
+          .limit(1);
+
+        if (existing.length > 0) {
+          // Update existing cartela
+          await db.update(cartelas)
+            .set({
+              name: `Cartela ${cartelaData.cno}`,
+              pattern: cartelaData.grid,
+              cardNo: cartelaData.card_no || cartelaData.cno, // Use card_no from CSV
+              updatedAt: new Date(),
+            })
+            .where(and(
+              eq(cartelas.employeeId, employeeId),
+              eq(cartelas.cartelaNumber, cartelaData.cno)
+            ));
+          console.log(`Updated cartela ${cartelaData.cno} for employee ${employeeId}`);
+        } else {
+          // Insert new cartela
+          await db.insert(cartelas)
+            .values({
+              employeeId,
+              cartelaNumber: cartelaData.cno,
+              cardNo: cartelaData.card_no || cartelaData.cno, // Use card_no from CSV
+              name: `Cartela ${cartelaData.cno}`,
+              pattern: cartelaData.grid,
+              isHardcoded: false,
+              isActive: true,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+          console.log(`Inserted cartela ${cartelaData.cno} with card_no ${cartelaData.card_no} for employee ${employeeId}`);
+        }
+        
+        imported++;
+      } catch (error) {
+        const errorMsg = `Failed to import cartela ${cartelaData.cno}: ${error.message || error}`;
+        console.error(errorMsg);
+        errors.push(errorMsg);
+      }
+    }
+
+    console.log(`Import completed: ${imported} successful, ${errors.length} failed`);
+
+    // Return detailed status
+    res.json({
+      imported,
+      errors,
+      total: cartelaDataList?.length || 0,
+      success: errors.length === 0
+    });
+  } catch (error) {
+    console.error("Error importing cartelas:", error);
+    res.status(500).json({ error: "Failed to import cartelas" });
+  }
+});
+
+// POST /api/cartelas/manual - Create manual cartela
+router.post("/manual", async (req, res) => {
+  try {
+    const { grid } = req.body;
+    const now = new Date(); // Date object for timestamp mode
+    
+    // Get authenticated employee ID from session
+    const user = (req as any).session?.user;
+    const employeeId = user?.id || 1; // Fallback to 1 for now
+    
+    // Generate next cartelaNumber
+    const lastCartela = await db
+      .select({ cartelaNumber: cartelas.cartelaNumber })
+      .from(cartelas)
+      .where(eq(cartelas.employeeId, employeeId))
+      .orderBy(cartelas.cartelaNumber)
+      .limit(1);
+    
+    const nextCno = lastCartela.length > 0 ? lastCartela[0].cartelaNumber + 1 : 1;
+    
+    const [newCartela] = await db
+      .insert(cartelas)
+      .values({
+        employeeId,
+        cartelaNumber: nextCno,
+        name: `Cartela ${nextCno}`,
+        pattern: JSON.stringify(grid),
+        isHardcoded: false,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    res.json(newCartela);
+  } catch (error) {
+    console.error('Manual cartela error:', error);
+    res.status(500).json({ error: "Failed to create manual cartela" });
   }
 });
 

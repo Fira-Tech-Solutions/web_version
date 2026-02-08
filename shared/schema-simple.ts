@@ -13,29 +13,18 @@ export const users = sqliteTable("users", {
   accountNumber: text("account_number").unique(),
   balance: real("balance").default(0),
   isBlocked: integer("is_blocked", { mode: "boolean" }).default(false),
-  shopId: integer("shop_id").references(() => shops.id, { onDelete: "set null" }),
   creditBalance: real("credit_balance").default(0),
   referredBy: integer("referred_by"),
   commissionRate: real("commission_rate").default(0),
-  createdAt: integer("created_at", { mode: "timestamp" }).default(Date.now),
-});
-
-export const shops = sqliteTable("shops", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  name: text("name").notNull(),
-  adminId: integer("admin_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  profitMargin: real("profit_margin").default(20),
-  balance: real("balance").default(0),
-  isBlocked: integer("is_blocked", { mode: "boolean" }).default(false),
-  totalRevenue: real("total_revenue").default(0),
-  totalGames: integer("total_games").default(0),
-  totalPlayers: integer("total_players").default(0),
-  createdAt: integer("created_at", { mode: "timestamp" }).default(Date.now),
+  profitMargin: real("profit_margin").default(20), // Employee's profit margin
+  totalRevenue: real("total_revenue").default(0), // Employee's total revenue
+  totalGames: integer("total_games").default(0), // Employee's total games
+  totalPlayers: integer("total_players").default(0), // Employee's total players
+  createdAt: integer("created_at", { mode: "timestamp" }),
 });
 
 export const games = sqliteTable("games", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  shopId: integer("shop_id").notNull().references(() => shops.id, { onDelete: "cascade" }),
   employeeId: integer("employee_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   status: text("status").notNull(), // 'waiting', 'active', 'completed', 'paused'
   prizePool: real("prize_pool").default(0),
@@ -45,7 +34,7 @@ export const games = sqliteTable("games", {
   startedAt: integer("started_at", { mode: "timestamp" }),
   completedAt: integer("completed_at", { mode: "timestamp" }),
   isPaused: integer("is_paused", { mode: "boolean" }).default(false),
-  createdAt: integer("created_at", { mode: "timestamp" }).default(Date.now),
+  createdAt: integer("created_at", { mode: "timestamp" }),
 });
 
 export const gamePlayers = sqliteTable("game_players", {
@@ -55,25 +44,22 @@ export const gamePlayers = sqliteTable("game_players", {
   cartelaNumbers: text("cartela_numbers").notNull(),
   entryFee: real("entry_fee").notNull(),
   isWinner: integer("is_winner", { mode: "boolean" }).default(false),
-  registeredAt: integer("registered_at", { mode: "timestamp" }).default(Date.now),
+  registeredAt: integer("registered_at", { mode: "timestamp" }),
 });
 
 export const transactions = sqliteTable("transactions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   gameId: integer("game_id").references(() => games.id, { onDelete: "cascade" }),
-  shopId: integer("shop_id").references(() => shops.id, { onDelete: "cascade" }),
   employeeId: integer("employee_id").references(() => users.id, { onDelete: "cascade" }),
-  adminId: integer("admin_id").references(() => users.id, { onDelete: "cascade" }),
   amount: real("amount").notNull(),
   type: text("type").notNull(), // 'entry_fee', 'prize_payout', 'admin_profit', 'credit_load'
   description: text("description"),
-  createdAt: integer("created_at", { mode: "timestamp" }).default(Date.now),
+  createdAt: integer("created_at", { mode: "timestamp" }),
 });
 
 export const gameHistory = sqliteTable("game_history", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   gameId: integer("game_id").notNull().references(() => games.id, { onDelete: "cascade" }),
-  shopId: integer("shop_id").notNull().references(() => shops.id, { onDelete: "cascade" }),
   employeeId: integer("employee_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   totalCollected: real("total_collected").notNull(),
   prizeAmount: real("prize_amount").notNull(),
@@ -81,14 +67,14 @@ export const gameHistory = sqliteTable("game_history", {
   playerCount: integer("player_count").notNull(),
   winnerName: text("winner_name"),
   winningCartela: text("winning_cartela"),
-  completedAt: integer("completed_at", { mode: "timestamp" }).default(Date.now),
+  completedAt: integer("completed_at", { mode: "timestamp" }),
 });
 
 export const cartelas = sqliteTable("cartelas", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  shopId: integer("shop_id").notNull().references(() => shops.id, { onDelete: "cascade" }),
-  adminId: integer("admin_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  employeeId: integer("employee_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   cartelaNumber: integer("cartela_number").notNull(),
+  cardNo: integer("card_no").notNull(), // Sequential card number (1, 2, 3...)
   name: text("name").notNull(),
   pattern: text("pattern").notNull(),
   isHardcoded: integer("is_hardcoded", { mode: "boolean" }).default(false),
@@ -96,52 +82,33 @@ export const cartelas = sqliteTable("cartelas", {
   isBooked: integer("is_booked", { mode: "boolean" }).default(false),
   bookedBy: integer("booked_by").references(() => users.id, { onDelete: "set null" }),
   gameId: integer("game_id").references(() => games.id, { onDelete: "set null" }),
-  createdAt: integer("created_at", { mode: "timestamp" }).default(Date.now),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).default(Date.now),
+  createdAt: integer("created_at", { mode: "timestamp" }),
+  updatedAt: integer("updated_at", { mode: "timestamp" }),
 }, (table) => ({
-  shopCartelaUnique: unique().on(table.shopId, table.cartelaNumber),
+  employeeCartelaUnique: unique().on(table.employeeId, table.cartelaNumber),
 }));
 
 export const dailyRevenueSummary = sqliteTable("daily_revenue_summary", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   date: text("date").notNull().unique(), // YYYY-MM-DD format
+  employeeId: integer("employee_id").references(() => users.id, { onDelete: "cascade" }),
   totalAdminRevenue: real("total_admin_revenue").default(0),
   totalGamesPlayed: integer("total_games_played").default(0),
   totalPlayersRegistered: integer("total_players_registered").default(0),
-  createdAt: integer("created_at", { mode: "timestamp" }).default(Date.now),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).default(Date.now),
+  createdAt: integer("created_at", { mode: "timestamp" }),
+  updatedAt: integer("updated_at", { mode: "timestamp" }),
 });
 
 // Relations
 export const usersRelations = relations(users, ({ one, many }) => ({
-  shop: one(shops, {
-    fields: [users.shopId],
-    references: [shops.id],
-  }),
-  managedShop: one(shops, {
-    fields: [users.id],
-    references: [shops.adminId],
-  }),
   games: many(games),
   transactions: many(transactions),
-}));
-
-export const shopsRelations = relations(shops, ({ one, many }) => ({
-  admin: one(users, {
-    fields: [shops.adminId],
-    references: [users.id],
-  }),
-  employees: many(users),
-  games: many(games),
-  transactions: many(transactions),
+  gameHistory: many(gameHistory),
   cartelas: many(cartelas),
+  dailyRevenueSummaries: many(dailyRevenueSummary),
 }));
 
 export const gamesRelations = relations(games, ({ one, many }) => ({
-  shop: one(shops, {
-    fields: [games.shopId],
-    references: [shops.id],
-  }),
   employee: one(users, {
     fields: [games.employeeId],
     references: [users.id],
@@ -152,6 +119,7 @@ export const gamesRelations = relations(games, ({ one, many }) => ({
     references: [gamePlayers.id],
   }),
   transactions: many(transactions),
+  gameHistory: many(gameHistory),
 }));
 
 export const gamePlayersRelations = relations(gamePlayers, ({ one }) => ({
@@ -166,10 +134,6 @@ export const transactionsRelations = relations(transactions, ({ one }) => ({
     fields: [transactions.gameId],
     references: [games.id],
   }),
-  shop: one(shops, {
-    fields: [transactions.shopId],
-    references: [shops.id],
-  }),
   employee: one(users, {
     fields: [transactions.employeeId],
     references: [users.id],
@@ -181,10 +145,6 @@ export const gameHistoryRelations = relations(gameHistory, ({ one }) => ({
     fields: [gameHistory.gameId],
     references: [games.id],
   }),
-  shop: one(shops, {
-    fields: [gameHistory.shopId],
-    references: [shops.id],
-  }),
   employee: one(users, {
     fields: [gameHistory.employeeId],
     references: [users.id],
@@ -192,12 +152,8 @@ export const gameHistoryRelations = relations(gameHistory, ({ one }) => ({
 }));
 
 export const cartelasRelations = relations(cartelas, ({ one }) => ({
-  shop: one(shops, {
-    fields: [cartelas.shopId],
-    references: [shops.id],
-  }),
-  admin: one(users, {
-    fields: [cartelas.adminId],
+  employee: one(users, {
+    fields: [cartelas.employeeId],
     references: [users.id],
   }),
   bookedBy: one(users, {
@@ -210,13 +166,14 @@ export const cartelasRelations = relations(cartelas, ({ one }) => ({
   }),
 }));
 
-// Insert schemas
-export const insertUserSchema = createInsertSchema(users).omit({
-  id: true,
-  createdAt: true,
-});
+export const dailyRevenueSummaryRelations = relations(dailyRevenueSummary, ({ one }) => ({
+  employee: one(users, {
+    fields: [dailyRevenueSummary.employeeId],
+    references: [users.id],
+  }),
+}));
 
-export const insertShopSchema = createInsertSchema(shops).omit({
+export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
 });
@@ -265,8 +222,6 @@ export const insertDailyRevenueSummarySchema = createInsertSchema(dailyRevenueSu
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
-export type Shop = typeof shops.$inferSelect;
-export type InsertShop = z.infer<typeof insertShopSchema>;
 export type Game = typeof games.$inferSelect;
 export type InsertGame = z.infer<typeof insertGameSchema>;
 export type GamePlayer = typeof gamePlayers.$inferSelect;

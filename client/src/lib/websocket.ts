@@ -11,6 +11,12 @@ export function useSocket(
 ) {
   const [isConnected, setIsConnected] = useState(false);
   const socket = useRef<Socket | null>(null);
+  const onMessageRef = useRef(onMessage);
+
+  // Update ref when onMessage changes
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
 
   const connect = useCallback(() => {
     if (socket.current?.connected) return;
@@ -33,21 +39,21 @@ export function useSocket(
 
     // Listen for all game-related events
     socket.current.on('global_balance_update', (data) => {
-      onMessage({ type: 'global_balance_update', ...data });
+      onMessageRef.current({ type: 'global_balance_update', ...data });
     });
 
     socket.current.on('number_called', (data) => {
-      onMessage({ type: 'number_called', ...data });
+      onMessageRef.current({ type: 'number_called', ...data });
     });
 
     socket.current.on('game_completed', (data) => {
-      onMessage({ type: 'game_completed', ...data });
+      onMessageRef.current({ type: 'game_completed', ...data });
     });
 
     socket.current.on('connect_error', (error) => {
       console.error('Socket.io connection error:', error);
     });
-  }, [onMessage]);
+  }, []);
 
   const sendMessage = useCallback((event: string, data: any) => {
     if (socket.current?.connected) {

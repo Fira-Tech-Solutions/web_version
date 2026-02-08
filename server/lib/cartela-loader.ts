@@ -1,6 +1,6 @@
 import { FIXED_CARTELAS } from "./fixed-cartelas";
 import { db } from "../db";
-import { cartelas } from "@shared/schema";
+import { cartelas } from "@shared/schema-simple";
 import { eq, and } from "drizzle-orm";
 
 // Convert hardcoded cartela to unified format
@@ -98,17 +98,17 @@ export async function loadHardcodedCartelas(shopId: number, adminId: number): Pr
 
 // Ensure all shops have hardcoded cartelas loaded
 export async function ensureHardcodedCartelasLoaded(): Promise<void> {
-  console.log("Loading hardcoded cartelas for all shops...");
+  console.log("Loading hardcoded cartelas for all employees...");
 
   try {
-    const { shops } = await import("@shared/schema");
-    const allShops = await db.select().from(shops);
+    const { users } = await import("@shared/schema-simple");
+    const allEmployees = await db.select().from(users).where(eq(users.role, 'employee'));
 
-    for (const shop of allShops) {
-      await loadHardcodedCartelas(shop.id, shop.adminId);
+    for (const employee of allEmployees) {
+      await loadHardcodedCartelas(employee.id, employee.id);
     }
 
-    console.log("Hardcoded cartelas loaded successfully for all shops");
+    console.log("Hardcoded cartelas loaded successfully for all employees");
   } catch (error) {
     console.error("Error loading hardcoded cartelas:", error);
   }
