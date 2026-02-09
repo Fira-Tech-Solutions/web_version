@@ -32,6 +32,15 @@ export async function apiRequest(
     credentials: "include",
   });
 
+  // Global 401 interceptor
+  if (res.status === 401) {
+    // Import queryClient dynamically to avoid circular dependency
+    const { queryClient } = await import('./queryClient');
+    // Clear all cached data and invalidate auth queries
+    queryClient.clear();
+    queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+  }
+
   await throwIfResNotOk(res);
   return res;
 }
