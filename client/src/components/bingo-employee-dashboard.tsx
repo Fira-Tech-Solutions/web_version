@@ -59,6 +59,8 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const [manualCartelaGrid, setManualCartelaGrid] = useState<number[][]>([]);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [activeTab, setActiveTab] = useState<'import' | 'manual' | 'builder' | 'table'>('import');
+  const [importProgress, setImportProgress] = useState<number>(0);
+  const [isImporting, setIsImporting] = useState(false);
 
   // CSV Import mutation
   const csvImportMutation = useMutation({
@@ -78,6 +80,10 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       return response.json();
     },
     onSuccess: (data) => {
+      // Reset progress state
+      setImportProgress(100);
+      setIsImporting(false);
+      
       // Show detailed import status
       if (data.success) {
         let message = data.imported > 0 
@@ -106,16 +112,18 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
         });
       }
       
-      // Reset form
-      setCsvFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      // Reset form after short delay
+      setTimeout(() => {
+        setCsvFile(null);
+        setImportProgress(0);
+      }, 1000);
       
       // Refresh cartelas list
       queryClient.invalidateQueries({ queryKey: ['/api/cartelas'] });
     },
     onError: (error) => {
+      setImportProgress(0);
+      setIsImporting(false);
       toast({
         title: "CSV Import Failed",
         description: error.message || "Failed to import cartelas. Please check the file format.",
@@ -136,11 +144,23 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const processCSVImport = () => {
     if (!csvFile) return;
 
+    setIsImporting(true);
+    setImportProgress(0);
+
     Papa.parse(csvFile, {
       header: true,
       skipEmptyLines: true,
+      step: function(row: any) {
+        // Update progress during parsing
+        const totalRows = 100; // Estimate for percentage
+        const currentProgress = Math.min(50, Math.floor((row.meta.cursor / csvFile.size) * 50));
+        setImportProgress(currentProgress);
+      },
       complete: (results) => {
         try {
+          const totalRows = results.data.length;
+          let processedCount = 0;
+
           const cartelaData = results.data.map((row: any) => {
             // Parse CSV row according to format: cno,user_id,card_no,b,i,n,g,o
             const cno = parseInt(row.cno);
@@ -158,15 +178,20 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
             // Combine into 5x5 grid (5 rows x 5 columns)
             // Each array contains all values for that column
             const grid: number[][] = [];
-            for (let row = 0; row < 5; row++) {
-              grid[row] = [
-                b[row] || 0,  // B column value for this row
-                i[row] || 0,  // I column value for this row
-                n[row] || 0,  // N column value for this row
-                g[row] || 0,  // G column value for this row
-                o[row] || 0   // O column value for this row
+            for (let rowIndex = 0; rowIndex < 5; rowIndex++) {
+              grid[rowIndex] = [
+                b[rowIndex] || 0,  // B column value for this row
+                i[rowIndex] || 0,  // I column value for this row
+                n[rowIndex] || 0,  // N column value for this row
+                g[rowIndex] || 0,  // G column value for this row
+                o[rowIndex] || 0   // O column value for this row
               ];
             }
+
+            // Update progress during processing
+            processedCount++;
+            const processingProgress = 50 + Math.floor((processedCount / totalRows) * 50);
+            setImportProgress(Math.min(99, processingProgress));
 
             return {
               cno,
@@ -176,8 +201,13 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
             };
           });
 
+          // Final progress update before API call
+          setImportProgress(99);
+
           csvImportMutation.mutate(cartelaData);
         } catch (error) {
+          setIsImporting(false);
+          setImportProgress(0);
           toast({
             title: "CSV Parse Error",
             description: "Failed to parse CSV file. Please check the format.",
@@ -186,6 +216,8 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
         }
       },
       error: (error) => {
+        setIsImporting(false);
+        setImportProgress(0);
         toast({
           title: "CSV Read Error",
           description: "Failed to read CSV file",
