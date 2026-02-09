@@ -3,6 +3,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import session from "express-session";
+import SqliteStore from "better-sqlite3-session-store";
+import { sqlite } from "./db/sqlite";
 import { db } from "./db";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./lib/vite";
@@ -37,16 +39,20 @@ app.use(express.static(publicPath, {
   }
 }));
 
-// Configure session middleware (using memory store for SQLite)
+// Configure session middleware with persistent SQLite store
 app.use(session({
-  secret: 'bingo-session-secret-key-longer-for-security',
+  store: new (SqliteStore(session))({
+    client: sqlite,
+    expired: { clear: true, intervalMs: 900000 }
+  }),
+  secret: process.env.SESSION_SECRET || 'bingo-session-secret-key-longer-for-security',
   resave: false,
   saveUninitialized: false,
   rolling: true,
   cookie: {
     secure: false,
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    httpOnly: false,
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week persistence
+    httpOnly: true,
     sameSite: 'lax',
     path: '/',
     domain: undefined
