@@ -140,6 +140,162 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     }
   };
 
+  // Handle Top Up File
+  const handleTopUpFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setRechargeFile(file);
+      processTopUpFile(file);
+    }
+  };
+
+  // Process Top Up File
+  const processTopUpFile = async (file: File) => {
+    // Validate file type
+    if (!file.name.endsWith('.enc')) {
+      toast({
+        title: "Invalid File Type",
+        description: "Please upload a valid .enc file",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Validate file size (max 1MB)
+    if (file.size > 1024 * 1024) {
+      toast({
+        title: "File Too Large",
+        description: "File size must be less than 1MB",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const reader = new FileReader();
+    
+    reader.onload = async (e) => {
+      const encryptedData = e.target?.result as string;
+      
+      if (!encryptedData) {
+        toast({
+          title: "File Read Error",
+          description: "Failed to read the uploaded file. Please try again.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Validate encrypted data format
+      if (encryptedData.length < 50) {
+        toast({
+          title: "Invalid File Format",
+          description: "The uploaded file appears to be corrupted or incomplete.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      try {
+        toast({
+          title: "Processing File",
+          description: "Verifying encrypted balance file...",
+        });
+
+        const response = await fetch('/api/recharge/topup', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ encryptedData }),
+        });
+
+        console.log('Response status:', response.status);
+        const result = await response.json();
+        console.log('Response result:', result);
+
+        if (!response.ok) {
+          console.log('Error response:', result);
+          // Handle specific error types based on error codes
+          if (result.error === 'INVALID_FILE_DATA') {
+            throw new Error("Invalid file data. Please upload a valid .enc balance file.");
+          } else if (result.error === 'INVALID_JSON_FORMAT') {
+            throw new Error("Invalid file format. The file appears to be corrupted or not a valid balance file.");
+          } else if (result.error === 'MISSING_REQUIRED_FIELDS') {
+            throw new Error("Invalid balance file structure. Missing required payload or signature data.");
+          } else if (result.error === 'MISSING_TRANSACTION_DATA') {
+            throw new Error("Invalid balance file data. Missing transaction ID or amount information.");
+          } else if (result.error === 'INVALID_AMOUNT') {
+            throw new Error("Invalid amount. The amount must be a positive number.");
+          } else if (result.error === 'INVALID_TRANSACTION_ID') {
+            throw new Error("Invalid transaction ID. The transaction ID must be a non-empty string.");
+          } else if (result.error === 'INVALID_ACCOUNT_NUMBER') {
+            throw new Error("Invalid employee account number format in the balance file.");
+          } else if (result.error === 'WRONG_ACCOUNT') {
+            throw new Error("This balance file is for a different account. Please use your own balance file.");
+          } else if (result.message?.includes('already been used') || result.message?.includes('already been redeemed')) {
+            throw new Error("This balance file has already been used. Each file can only be used once.");
+          } else if (result.message?.includes('signature') || result.message?.includes('tampered')) {
+            throw new Error("Invalid signature. The file may have been tampered with or is not authentic.");
+          } else if (result.message?.includes('decrypt') || result.message?.includes('corrupted')) {
+            throw new Error("Invalid or corrupted balance file. The file may be damaged or not properly encrypted.");
+          } else if (result.message?.includes('expired')) {
+            throw new Error("This balance file has expired. Please contact support for a new file.");
+          } else {
+            throw new Error(result.message || 'Failed to process balance file');
+          }
+        }
+
+        toast({
+          title: "Success!",
+          description: `Balance topped up successfully! Amount: ${result.amount} ETB`,
+        });
+
+        // Refresh user data to get updated balance
+        queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
+        
+      } catch (error: any) {
+        console.error('Top-up error:', error);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+        
+        let errorMessage = "Failed to process balance file";
+        
+        // Provide specific error messages based on error type
+        if (error.message?.includes('Failed to fetch')) {
+          errorMessage = "Network error. Please check your connection and try again.";
+        } else if (error.message?.includes('decrypt')) {
+          errorMessage = "Invalid encryption. The file is not properly encrypted or is corrupted.";
+        } else if (error.message?.includes('signature')) {
+          errorMessage = "Invalid signature. The file may be tampered with or not authentic.";
+        } else if (error.message?.includes('already been used')) {
+          errorMessage = "This balance file has already been used. Each file can only be used once.";
+        } else if (error.message?.includes('another account')) {
+          errorMessage = "This balance file is for a different account. Please use your own balance file.";
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        
+        console.log('Final error message to show:', errorMessage);
+        
+        toast({
+          title: "Top-Up Failed",
+          description: errorMessage,
+          variant: "destructive"
+        });
+      }
+    };
+
+    reader.onerror = () => {
+      toast({
+        title: "File Read Error",
+        description: "Failed to read the uploaded file. Please try again.",
+        variant: "destructive"
+      });
+    };
+
+    reader.readAsText(file);
+  };
+
   // Process CSV file (separate from file input handler)
   const processCSVImport = () => {
     if (!csvFile) return;
@@ -319,6 +475,18 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     refetchInterval: 5000
   });
 
+  // Game history query
+  const { data: gameHistory } = useQuery({
+    queryKey: ['/api/game-history', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const response = await fetch(`/api/game-history/${user.id}`);
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!user?.id,
+  });
+
   // Update called numbers mutation
   const updateCalledNumbersMutation = useMutation({
     mutationFn: async ({ gameId, calledNumbers }: { gameId: number; calledNumbers: number[] }) => {
@@ -337,23 +505,23 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       return response.json();
     },
     onSuccess: () => {
-      // Refresh the active game data
+      // Refresh active game data
       queryClient.invalidateQueries({ queryKey: ['/api/games/active'] });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       console.error('Failed to save called numbers:', error);
       toast({
         title: "Warning",
         description: "Number called but not saved to server",
         variant: "destructive"
       });
-    }
+    },
   });
 
-  // Sync called numbers from backend when active game changes
+// Sync called numbers from backend when active game changes
   useEffect(() => {
-    if (activeGame?.calledNumbers && Array.isArray(activeGame.calledNumbers)) {
-      const backendNumbers = activeGame.calledNumbers.map(n => typeof n === 'string' ? parseInt(n) : n);
+    if (activeGame && (activeGame as any)?.calledNumbers && Array.isArray((activeGame as any).calledNumbers)) {
+      const backendNumbers = (activeGame as any).calledNumbers.map((n: any) => typeof n === 'string' ? parseInt(n) : n);
       setCalledNumbers(backendNumbers);
       if (backendNumbers.length > 0) {
         setCurrentNumber(backendNumbers[backendNumbers.length - 1]);
@@ -435,9 +603,9 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     });
 
     // Save to backend if there's an active game
-    if (activeGame?.id) {
+    if ((activeGame as any)?.id) {
       updateCalledNumbersMutation.mutate({
-        gameId: activeGame.id,
+        gameId: (activeGame as any).id,
         calledNumbers: newCalledNumbers
       });
     }
@@ -974,20 +1142,22 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
               <div className="mb-6 bg-blue-50 rounded-lg p-6">
                 <h3 className="text-xl font-bold mb-4">Current Balance</h3>
                 <div className="text-4xl font-bold text-blue-600 mb-4">
-                  {(shopData as any)?.balance || 0} ETB
+                  {(user as any)?.balance || 0} ETB
                 </div>
-                <label className="cursor-pointer">
-                  <input
-                    type="file"
-                    accept=".enc"
-                    onChange={handleTopUpFile}
-                    className="hidden"
-                  />
-                  <Button className="bg-green-600 hover:bg-green-700 text-white">
-                    <Upload className="w-4 h-4 mr-2" />
-                    Top Up Balance (.enc file)
-                  </Button>
-                </label>
+                <Button 
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => document.getElementById('topup-file-input')?.click()}
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  Top Up Balance (.enc file)
+                </Button>
+                <input
+                  id="topup-file-input"
+                  type="file"
+                  accept=".enc"
+                  onChange={handleTopUpFile}
+                  className="hidden"
+                />
               </div>
 
               {/* Game History */}
@@ -1006,31 +1176,33 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                       </tr>
                     </thead>
                     <tbody>
-                      {/* Sample data - replace with actual game history */}
-                      <tr className="border-b border-gray-200">
-                        <td className="px-4 py-3">Round 1</td>
-                        <td className="px-4 py-3">{new Date().toLocaleDateString()}</td>
-                        <td className="px-4 py-3">25</td>
-                        <td className="px-4 py-3">250 ETB</td>
-                        <td className="px-4 py-3">Card #15</td>
-                        <td className="px-4 py-3">
-                          <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-sm">
-                            Completed
-                          </span>
-                        </td>
-                      </tr>
-                      <tr className="border-b border-gray-200">
-                        <td className="px-4 py-3">Round 2</td>
-                        <td className="px-4 py-3">{new Date().toLocaleDateString()}</td>
-                        <td className="px-4 py-3">30</td>
-                        <td className="px-4 py-3">300 ETB</td>
-                        <td className="px-4 py-3">Card #42</td>
-                        <td className="px-4 py-3">
-                          <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-sm">
-                            Completed
-                          </span>
-                        </td>
-                      </tr>
+                      {gameHistory?.map((game: any, index: number) => (
+                        <tr key={game.id || index} className="border-b border-gray-200">
+                          <td className="px-4 py-3">Round {index + 1}</td>
+                          <td className="px-4 py-3">{new Date(game.createdAt || game.startTime).toLocaleDateString()}</td>
+                          <td className="px-4 py-3">{game.totalPlayers || game.players?.length || 0}</td>
+                          <td className="px-4 py-3">{game.prizePool || game.totalCollected || 0} ETB</td>
+                          <td className="px-4 py-3">{game.winnerName || game.winner || '-'}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-1 rounded text-sm ${
+                              game.status === 'completed' 
+                                ? 'bg-green-100 text-green-800'
+                                : game.status === 'active'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {game.status === 'completed' ? 'Completed' : game.status === 'active' ? 'Active' : 'Paused'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                      {(!gameHistory || gameHistory.length === 0) && (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                            No game history available
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
