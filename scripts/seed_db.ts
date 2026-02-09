@@ -1,7 +1,6 @@
-
 import "dotenv/config";
-import { db, pool } from "../server/db";
-import { users, shops, cartelas } from "../shared/schema";
+import { db } from "../server/db";
+import { users, cartelas } from "../shared/schema-simple";
 import bcrypt from "bcrypt";
 import { eq, and } from "drizzle-orm";
 
@@ -28,59 +27,37 @@ async function seed() {
             console.log("ℹ️ Super Admin already exists");
         }
 
-        // 2. Create Demo Shop
-        console.log("Creating Demo Shop...");
-        let [demoShop] = await db.select().from(shops).where(eq(shops.name, 'Demo Bingo Hall'));
-
-        if (!demoShop) {
-            [demoShop] = await db.insert(shops).values({
-                name: 'Demo Bingo Hall',
-                adminId: superAdmin.id,
-                profitMargin: "20.00",
-                balance: "1000.00",
-                isBlocked: false,
-                totalRevenue: "0.00"
-            }).returning();
-            console.log("✅ Demo Shop created");
-        } else {
-            console.log("ℹ️ Demo Shop already exists");
-        }
-
-        // 3. Create Demo Admin
+        // 2. Create Demo Admin
         console.log("Creating Demo Admin...");
-        let [demoAdmin] = await db.select().from(users).where(eq(users.username, 'demoadmin'));
+        let [demoAdmin] = await db.select().from(users).where(eq(users.username, 'admin'));
 
         if (!demoAdmin) {
-            const hashedPassword = await bcrypt.hash('admin123', 10);
+            const hashedPassword = await bcrypt.hash('password', 10);
             [demoAdmin] = await db.insert(users).values({
-                username: 'demoadmin',
+                username: 'admin',
                 password: hashedPassword,
                 role: 'admin',
                 name: 'Demo Admin',
                 email: 'admin@bingomaster.com',
-                shopId: demoShop.id,
                 isBlocked: false
             }).returning();
             console.log("✅ Demo Admin created");
-
-            // Link shop to admin
-            await db.update(shops).set({ adminId: demoAdmin.id }).where(eq(shops.id, demoShop.id));
         } else {
             console.log("ℹ️ Demo Admin already exists");
         }
 
-        // 4. Create Demo Employee
+        // 3. Create Demo Employee
         console.log("Creating Demo Employee...");
-        let [demoEmployee] = await db.select().from(users).where(eq(users.username, 'demoemployee'));
+        let [demoEmployee] = await db.select().from(users).where(eq(users.username, 'employee'));
 
         if (!demoEmployee) {
-            const hashedPassword = await bcrypt.hash('employee123', 10);
+            const hashedPassword = await bcrypt.hash('password', 10);
             [demoEmployee] = await db.insert(users).values({
-                username: 'demoemployee',
+                username: 'employee',
                 password: hashedPassword,
                 role: 'employee',
                 name: 'Demo Employee',
-                shopId: demoShop.id,
+                email: 'employee@bingomaster.com',
                 isBlocked: false
             }).returning();
             console.log("✅ Demo Employee created");
@@ -128,13 +105,12 @@ async function seed() {
             // Let's just try insert and ignore conflict if possible, or select first.
 
             const [exists] = await db.select().from(cartelas).where(
-                and(eq(cartelas.shopId, demoShop.id), eq(cartelas.cartelaNumber, cartelaNum))
+                eq(cartelas.cartelaNumber, cartelaNum)
             );
 
             if (!exists) {
                 await db.insert(cartelas).values({
-                    shopId: demoShop.id,
-                    adminId: demoAdmin.id,
+                    employeeId: demoAdmin.id,
                     cartelaNumber: cartelaNum,
                     name: `Demo Cartela ${cartelaNum}`,
                     pattern: cartelaPatterns[i],
@@ -154,8 +130,6 @@ async function seed() {
 
     } catch (error) {
         console.error("❌ Seeding failed:", error);
-    } finally {
-        await pool.end();
     }
 }
 

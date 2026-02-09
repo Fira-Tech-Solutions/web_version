@@ -37,23 +37,18 @@ function convertHardcodedCartela(hardcodedCartela: any): {
   };
 }
 
-// Load hardcoded cartelas into database for a specific shop
-export async function loadHardcodedCartelas(shopId: number, adminId: number): Promise<void> {
-  console.log(`Loading hardcoded cartelas for shop ${shopId}...`);
+// Load hardcoded cartelas into database
+export async function loadHardcodedCartelas(adminId: number): Promise<void> {
+  console.log("Loading hardcoded cartelas...");
 
   for (const hardcodedCartela of FIXED_CARTELAS) {
     const cartelaNumber = hardcodedCartela.Board;
 
-    // Check if cartela already exists for this shop
+    // Check if cartela already exists
     const existing = await db
       .select()
       .from(cartelas)
-      .where(
-        and(
-          eq(cartelas.shopId, shopId),
-          eq(cartelas.cartelaNumber, cartelaNumber)
-        )
-      )
+      .where(eq(cartelas.cartelaNumber, cartelaNumber))
       .limit(1);
 
     const converted = convertHardcodedCartela(hardcodedCartela);
@@ -61,8 +56,7 @@ export async function loadHardcodedCartelas(shopId: number, adminId: number): Pr
     if (existing.length === 0) {
       // Insert new hardcoded cartela
       await db.insert(cartelas).values({
-        shopId,
-        adminId,
+        employeeId: adminId,
         cartelaNumber,
         name: converted.name,
         pattern: JSON.stringify(converted.pattern),
@@ -71,7 +65,7 @@ export async function loadHardcodedCartelas(shopId: number, adminId: number): Pr
         isActive: true,
       });
 
-      console.log(`Loaded hardcoded cartela ${cartelaNumber} for shop ${shopId}`);
+      console.log(`Loaded hardcoded cartela ${cartelaNumber}`);
     } else {
       // Update existing cartela if adding same cartela number
       await db
@@ -82,21 +76,16 @@ export async function loadHardcodedCartelas(shopId: number, adminId: number): Pr
           name: converted.name,
           isHardcoded: true,
         })
-        .where(
-          and(
-            eq(cartelas.shopId, shopId),
-            eq(cartelas.cartelaNumber, cartelaNumber)
-          )
-        );
+        .where(eq(cartelas.cartelaNumber, cartelaNumber));
 
-      console.log(`Updated existing cartela ${cartelaNumber} for shop ${shopId} with default values`);
+      console.log(`Updated existing cartela ${cartelaNumber} with default values`);
     }
   }
 
-  console.log(`Finished loading hardcoded cartelas for shop ${shopId}`);
+  console.log("Finished loading hardcoded cartelas");
 }
 
-// Ensure all shops have hardcoded cartelas loaded
+// Ensure all employees have hardcoded cartelas loaded
 export async function ensureHardcodedCartelasLoaded(): Promise<void> {
   console.log("Loading hardcoded cartelas for all employees...");
 
@@ -105,10 +94,10 @@ export async function ensureHardcodedCartelasLoaded(): Promise<void> {
     const allEmployees = await db.select().from(users).where(eq(users.role, 'employee'));
 
     for (const employee of allEmployees) {
-      await loadHardcodedCartelas(employee.id, employee.id);
+      await loadHardcodedCartelas(employee.id);
     }
 
-    console.log("Hardcoded cartelas loaded successfully for all employees");
+    console.log("Finished loading hardcoded cartelas for all employees");
   } catch (error) {
     console.error("Error loading hardcoded cartelas:", error);
   }

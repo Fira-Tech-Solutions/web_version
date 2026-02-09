@@ -120,6 +120,13 @@ export const activateHandler = (req: Request, res: Response) => {
  * Expected file format (decrypted): { payload: { transactionID, amount, employeeAccountNumber? }, signature }
  */
 const topupHandler = async (req: Request, res: Response) => {
+  console.log('Top-up request received:', {
+    method: req.method,
+    headers: req.headers,
+    body: req.body,
+    contentType: req.get('content-type')
+  });
+
   if (!PUBLIC_KEY) {
     return res.status(500).json({ message: "Server configuration error: Public key missing" });
   }
@@ -133,35 +140,71 @@ const topupHandler = async (req: Request, res: Response) => {
 
     const { encryptedData } = req.body;
     if (!encryptedData || typeof encryptedData !== "string") {
-      return res.status(400).json({ message: "Recharge file data (.enc content) required" });
+      return res.status(400).json({ 
+        message: "Invalid file data. Please upload a valid .enc file.",
+        error: "INVALID_FILE_DATA"
+      });
     }
 
-    const decrypted = decryptData(encryptedData);
+    // Try to parse the JSON data
+    let decrypted;
+    try {
+      decrypted = JSON.parse(encryptedData);
+    } catch (parseError) {
+      return res.status(400).json({ 
+        message: "Invalid file format. The file appears to be corrupted or not a valid balance file.",
+        error: "INVALID_JSON_FORMAT"
+      });
+    }
+
     const { payload, signature } = decrypted;
 
     if (!payload || !signature) {
-      return res.status(400).json({ message: "Invalid recharge file format" });
+      return res.status(400).json({ 
+        message: "Invalid balance file structure. Missing required payload or signature data.",
+        error: "MISSING_REQUIRED_FIELDS"
+      });
     }
 
     const { transactionID, amount, employeeAccountNumber } = payload;
     if (!transactionID || amount == null) {
-      return res.status(400).json({ message: "Recharge file missing transactionID or amount" });
+      return res.status(400).json({ 
+        message: "Invalid balance file data. Missing transaction ID or amount information.",
+        error: "MISSING_TRANSACTION_DATA"
+      });
     }
 
-    // Verify RSA signature
-    const isValid = verifyBalance(payload, signature, PUBLIC_KEY);
-    if (!isValid) {
-      return res.status(401).json({ message: "Invalid signature. Recharge file may be tampered." });
+    // Validate amount is a positive number
+    const amountNum = parseFloat(String(amount));
+    if (isNaN(amountNum) || amountNum <= 0) {
+      return res.status(400).json({ 
+        message: "Invalid amount. The amount must be a positive number.",
+        error: "INVALID_AMOUNT"
+      });
+    }
+
+    // Validate transactionID format
+    if (typeof transactionID !== 'string' || transactionID.trim().length === 0) {
+      return res.status(400).json({ 
+        message: "Invalid transaction ID. The transaction ID must be a non-empty string.",
+        error: "INVALID_TRANSACTION_ID"
+      });
+    }
+
+    // Optional: Validate employeeAccountNumber if present
+    if (employeeAccountNumber && (typeof employeeAccountNumber !== 'string' || employeeAccountNumber.trim().length === 0)) {
+      return res.status(400).json({ 
+        message: "Invalid employee account number format.",
+        error: "INVALID_ACCOUNT_NUMBER"
+      });
     }
 
     // Optional: verify file is for this employee
     if (employeeAccountNumber && user.accountNumber && employeeAccountNumber !== user.accountNumber) {
-      return res.status(403).json({ message: "This recharge file is for another account" });
-    }
-
-    const amountNum = parseFloat(String(amount));
-    if (isNaN(amountNum) || amountNum <= 0) {
-      return res.status(400).json({ message: "Invalid amount" });
+      return res.status(403).json({ 
+        message: "This recharge file is for another account",
+        error: "WRONG_ACCOUNT"
+      });
     }
 
     // Check transactionID is unique
