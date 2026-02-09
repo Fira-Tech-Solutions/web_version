@@ -4,3 +4,25 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+# Sensitive files - exclude from repository
+data/license.db*
+data/license.db-shm
+data/license.db-wal
+keys/private_key.pem
+keys/
+activation_*.enc
+*.enc
+.env
+.env.*
+# Build outputs
+release/
+build/
+*.exe
+*.AppImage
+# Development files
+.vscode/
+.replit/
+uploads/
+*.log
+debug.log
+error.log

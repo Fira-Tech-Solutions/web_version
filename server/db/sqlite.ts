@@ -1,9 +1,25 @@
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import * as schema from "@shared/schema-simple";
+import path from 'path';
+import { app } from 'electron';
+
+// Determine database path based on environment
+const getDatabasePath = () => {
+  if (process.type === 'browser' || (process.versions && process.versions.electron)) {
+    // Running in Electron - use userData directory
+    const userDataPath = app.getPath('userData');
+    return path.join(userDataPath, 'bingo.db');
+  } else {
+    // Running in development/regular Node.js - use current directory
+    return 'bingo.db';
+  }
+};
 
 // Initialize SQLite database
-const sqlite = new Database('bingo.db');
+const dbPath = getDatabasePath();
+console.log('Database path:', dbPath);
+const sqlite = new Database(dbPath);
 const db = drizzle(sqlite, { schema });
 
 // Create tables if they don't exist

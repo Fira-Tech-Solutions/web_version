@@ -1,12 +1,16 @@
 {
   "name": "rest-express",
   "version": "1.0.0",
+  "main": "main.js",
   "type": "module",
   "license": "MIT",
   "scripts": {
     "dev": "NODE_ENV=development tsx --env-file=.env server/index.ts",
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
+    "electron": "NODE_ENV=production electron .",
+    "electron:dev": "NODE_ENV=development electron .",
+    "electron:build": "npm run build && electron-builder --win portable",
     "check": "tsc",
     "db:push": "drizzle-kit push"
   },
@@ -62,6 +66,7 @@
     "nanoid": "^5.1.5",
     "next-themes": "^0.4.6",
     "node-forge": "^1.3.3",
+    "papaparse": "^5.5.3",
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
     "react": "^18.3.1",
@@ -102,6 +107,8 @@
     "@vitejs/plugin-react": "^4.3.2",
     "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.31.1",
+    "electron": "^40.2.1",
+    "electron-builder": "^26.7.0",
     "esbuild": "^0.25.0",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
@@ -111,5 +118,45 @@
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"
+  },
+  "build": {
+    "appId": "com.firatech.bingomaster",
+    "productName": "BingoMaster",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "main.js",
+      "node_modules/**/*",
+      "package.json",
+      "!data/license.db*",
+      "!keys/private_key.pem",
+      "!activation_*.enc",
+      "!*.enc"
+    ],
+    "extraResources": [
+      {
+        "from": "public",
+        "to": "public"
+      }
+    ],
+    "asarUnpack": [
+      "node_modules/bcrypt/**/*"
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "win": {
+      "target": "dir",
+      "icon": "public/icon.ico",
+      "forceCodeSigning": false
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}.${ext}"
+    }
   }
 }
