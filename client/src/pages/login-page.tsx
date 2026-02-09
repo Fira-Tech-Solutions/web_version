@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { User, Lock, Phone } from "lucide-react";
 
 const BRAND_BLUE = "#1976D2";
@@ -15,19 +15,32 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: { username: string; password: string }) => {
       const response = await apiRequest("POST", "/api/auth/login", credentials);
       return response.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: async (data: any) => {
       const user = data.user;
+      
+      // 1. Immediately update the 'auth/me' cache with the user data returned from login
+      queryClient.setQueryData(["/api/auth/me"], { user });
+      
+      // 2. Force an immediate background refetch of all critical queries
+      // This ensures the balance, shop status, and user profile are fresh
+      await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      
+      // 3. Specifically trigger the cartelas fetch for the new user ID
+      queryClient.invalidateQueries({ queryKey: ["/api/cartelas"] });
+      
       toast({
         title: "Login successful",
         description: `Welcome back, ${user.name}!`,
       });
 
+      // 4. Redirect to dashboard
       if (user.role === "super_admin" || user.role === "admin") {
         setLocation("/dashboard/admin");
       } else if (user.role === "employee") {

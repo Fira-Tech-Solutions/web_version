@@ -43,12 +43,18 @@ export function AuthProvider(props: { children: ReactNode }) {
       const data = await response.json();
       return data.user;
     },
-    onSuccess: (user) => {
-      // Clear any cached data first
-      queryClient.removeQueries({ queryKey: ["/api/auth/me"] });
-      // Set fresh user data with correct structure
+    onSuccess: async (user) => {
+      // 1. Immediately update the 'auth/me' cache with the user data returned from login
       queryClient.setQueryData(["/api/auth/me"], { user });
-      // Force immediate refetch to ensure consistency
+      
+      // 2. Force an immediate background refetch of all critical queries
+      // This ensures the balance, shop status, and user profile are fresh
+      await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      
+      // 3. Specifically trigger the cartelas fetch for the new user ID
+      queryClient.invalidateQueries({ queryKey: ["/api/cartelas"] });
+      
+      // 4. Force immediate refetch to ensure consistency
       refetch();
     },
   });
