@@ -120,43 +120,32 @@
     "bufferutil": "^4.0.8"
   },
   "build": {
-    "appId": "com.firatech.bingomaster",
-    "productName": "BingoMaster",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "main.js",
-      "node_modules/**/*",
-      "package.json",
-      "!data/license.db*",
-      "!keys/private_key.pem",
-      "!activation_*.enc",
-      "!*.enc"
-    ],
-    "extraResources": [
-      {
-        "from": "public",
-        "to": "public"
-      }
-    ],
-    "asarUnpack": [
-      "node_modules/bcrypt/**/*"
-    ],
-    "asar": true,
-    "npmRebuild": false,
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
-    },
-    "win": {
-      "target": "dir",
-      "icon": "public/icon.ico",
-      "forceCodeSigning": false
-    },
-    "portable": {
-      "artifactName": "${productName}-${version}.${ext}"
+  "appId": "com.firatech.bingomaster",
+  "productName": "GrandBingo",
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "Fira-Tech-Solutions",
+      "repo": "grand_bingo"
     }
-  }
+  ],
+  "directories": {
+    "output": "release"
+  },
+  "win": {
+    "target": ["portable"],
+    "icon": "client/public/go_bingo.png"
+  },
+  "files": [
+    "dist/**/*",
+    "main.js",
+    "package.json",
+    "!data/license.db*",
+    "!keys/private_key.pem"
+  ],
+  "asar": true,
+  "asarUnpack": [
+    "node_modules/better-sqlite3/**/*"
+  ]
+}
 }
