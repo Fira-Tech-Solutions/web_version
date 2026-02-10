@@ -58,7 +58,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const [currentPage, setCurrentPage] = useState(1);
   const [manualCartelaGrid, setManualCartelaGrid] = useState<number[][]>([]);
   const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [activeTab, setActiveTab] = useState<'import' | 'manual' | 'builder' | 'table'>('import');
+  const [activeTab, setActiveTab] = useState<'import' | 'manual' | 'table'>('import');
   const [importProgress, setImportProgress] = useState<number>(0);
   const [isImporting, setIsImporting] = useState(false);
 
@@ -419,7 +419,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
   // Handle Save Manual Cartela
   const handleSaveManualCartela = () => {
-    // Validate the grid
+    // Validate grid structure
     if (manualCartelaGrid.length !== 5 || manualCartelaGrid.some(row => row.length !== 5)) {
       toast({
         title: "Invalid Grid",
@@ -429,7 +429,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       return;
     }
 
-    // Check if the center cell (N3) is 0 (free space)
+    // Check if center cell (N3) is 0 (free space)
     if (manualCartelaGrid[2][2] !== 0) {
       toast({
         title: "Invalid Grid",
@@ -439,7 +439,90 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       return;
     }
 
+    // Validate column ranges and duplicates
+    const columnRanges = [
+      { name: 'B', min: 1, max: 15, col: 0 },
+      { name: 'I', min: 16, max: 30, col: 1 },
+      { name: 'N', min: 31, max: 45, col: 2 },
+      { name: 'G', min: 46, max: 60, col: 3 },
+      { name: 'O', min: 61, max: 75, col: 4 }
+    ];
+
+    for (const column of columnRanges) {
+      const columnValues = [];
+      for (let row = 0; row < 5; row++) {
+        // Skip center cell for N column
+        if (column.name === 'N' && row === 2) continue;
+        
+        const value = manualCartelaGrid[row][column.col];
+        if (!value || value === 0) {
+          toast({
+            title: "Invalid Grid",
+            description: `Column ${column.name} has empty cells`,
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        // Check range
+        if (value < column.min || value > column.max) {
+          toast({
+            title: "Invalid Range",
+            description: `Column ${column.name} must contain numbers between ${column.min}-${column.max}`,
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        columnValues.push(value);
+      }
+
+      // Check for duplicates in column
+      const uniqueValues = new Set(columnValues);
+      if (uniqueValues.size !== columnValues.length) {
+        toast({
+          title: "Duplicate Numbers",
+          description: `Column ${column.name} contains duplicate numbers`,
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+
+    // Check for unique card number by comparing with existing cartelas
+    if (cartelas && cartelas.length > 0) {
+      const existingCardNumbers = new Set(cartelas.map(c => c.cardNo || c.cartelaNumber));
+      const newCardNumber = Math.max(...cartelas.map(c => c.cardNo || c.cartelaNumber)) + 1;
+      
+      if (existingCardNumbers.has(newCardNumber)) {
+        toast({
+          title: "Duplicate Card Number",
+          description: `Card number ${newCardNumber} already exists. Please use a unique card number.`,
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+
     saveManualCartelaMutation.mutate(manualCartelaGrid);
+  };
+
+  // Handle Manual Cartela Change
+  const handleManualCartelaChange = (row: number, col: number, value: string) => {
+    const numValue = value === '' ? 0 : parseInt(value);
+    
+    // Create a new grid to avoid direct mutation
+    const newGrid = [...manualCartelaGrid];
+    
+    // Ensure the row exists
+    if (!newGrid[row]) {
+      newGrid[row] = [];
+    }
+    
+    // Update the cell value
+    newGrid[row][col] = numValue;
+    
+    setManualCartelaGrid(newGrid);
   };
 
   // Initialize voice selection
@@ -531,14 +614,12 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
   // Helper function to get letter for number
   const { data: cartelas, isLoading: cartelasQueryLoading } = useQuery({
-    queryKey: ['/api/cartelas', user?.id],
+    queryKey: ['/api/cartelas'],
     queryFn: async () => {
-      if (!user?.id) return [];
-      const response = await fetch(`/api/cartelas/${user.id}`);
+      const response = await fetch('/api/cartelas');
       if (!response.ok) return [];
       return response.json();
     },
-    enabled: !!user?.id, // Only enabled when user is logged in
   });
 
   // Helper function to get letter for number
@@ -2097,227 +2178,357 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
       {/* Cartela Management Modal */}
       {showCartelaManagement && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[70] p-4">
-          <div className="bg-white text-black rounded-lg shadow-2xl max-w-7xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 bg-black bg-opacity-80 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+          <div className="bg-gray-900 text-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col border border-gray-700">
             {/* Header */}
-            <div className="bg-gray-800 text-white px-6 py-4 flex justify-between items-center">
-              <h2 className="text-2xl font-bold">Cartela Management Panel</h2>
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-8 py-5 flex justify-between items-center border-b border-gray-700">
+              <h2 className="text-2xl font-bold text-white flex items-center">
+                <div className="w-8 h-8 bg-white bg-opacity-20 rounded-lg flex items-center justify-center mr-3">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2h14m-7 4l7 7m0 0l-7-7" />
+                  </svg>
+                </div>
+                Cartela Management
+              </h2>
               <button 
                 onClick={() => setShowCartelaManagement(false)}
-                className="hover:text-red-400 transition-colors"
+                className="text-gray-300 hover:text-white transition-colors p-2 hover:bg-white hover:bg-opacity-10 rounded-lg"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6">
-              {/* Import Section */}
-              <div className="mb-8">
-                <h3 className="text-xl font-bold mb-4 text-gray-800">Import Features</h3>
-                <div className="grid grid-cols-1 gap-6">
-                  {/* CSV Import */}
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
-                    <h4 className="text-lg font-semibold mb-3">CSV Import</h4>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Format: cno,user_id,card_no,b,i,n,g,o
-                    </p>
-                    <input
-                      type="file"
-                      accept=".csv"
-                      onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
-                      className="mb-4 w-full p-2 border rounded"
-                    />
-                    <Button 
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                      disabled={!csvFile || csvImportMutation.isPending}
-                      onClick={processCSVImport}
-                    >
-                      {csvImportMutation.isPending ? 'Importing...' : 'Import CSV'}
-                    </Button>
+            {/* Tab Navigation */}
+            <div className="bg-gray-800 px-8 py-4 border-b border-gray-700">
+              <div className="flex space-x-1">
+                <button
+                  onClick={() => setActiveTab('import')}
+                  className={`px-6 py-3 rounded-t-lg font-medium transition-all ${
+                    activeTab === 'import' 
+                      ? 'bg-blue-600 text-white shadow-lg' 
+                      : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                  }`}
+                >
+                  <div className="flex items-center">
+                    <Upload className="w-4 h-4 mr-2" />
+                    Import CSV
                   </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab('manual')}
+                  className={`px-6 py-3 rounded-t-lg font-medium transition-all ${
+                    activeTab === 'manual' 
+                      ? 'bg-purple-600 text-white shadow-lg' 
+                      : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                  }`}
+                >
+                  <div className="flex items-center">
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H8m8 8l-4-4m0 0l4 4m-4-4v8" />
+                    </svg>
+                    Manual Add
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab('table')}
+                  className={`px-6 py-3 rounded-t-lg font-medium transition-all ${
+                    activeTab === 'table' 
+                      ? 'bg-green-600 text-white shadow-lg' 
+                      : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                  }`}
+                >
+                  <div className="flex items-center">
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4h10a1 1 0 011 1v4a1 1 0 01-1 1H6a1 1 0 01-1-1v-4a1 1 0 011-1h10z" />
+                    </svg>
+                    View Table
+                  </div>
+                </button>
+              </div>
+            </div>
 
-                  {/* Manual Cartela Builder */}
-                  <div className="border-2 border-gray-300 rounded-lg p-6">
-                    <h4 className="text-lg font-semibold mb-3">Manual Cartela Builder</h4>
-                    <div className="grid grid-cols-5 gap-2 mb-4 max-w-sm mx-auto">
-                      {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => (
-                        <div key={letter} className="text-center font-bold text-lg">
-                          {letter}
+            {/* Content Area */}
+            <div className="flex-1 overflow-y-auto p-8 bg-gray-900">
+              {activeTab === 'import' && (
+                <div className="max-w-4xl mx-auto">
+                  <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 shadow-xl">
+                    <div className="mb-8">
+                      <h3 className="text-2xl font-bold text-white mb-4 flex items-center">
+                        <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
+                          <Upload className="w-5 h-5 text-white" />
                         </div>
-                      ))}
-                      {Array.from({ length: 25 }, (_, i) => {
-                        const row = Math.floor(i / 5);
-                        const col = i % 5;
-                        const isFreeSpace = row === 2 && col === 2;
-                        
-                        return (
-                          <input
-                            key={i}
-                            type="number"
-                            value={isFreeSpace ? 0 : (manualCartelaGrid[row]?.[col] || '')}
-                            disabled={isFreeSpace}
-                            placeholder={isFreeSpace ? '★' : ''}
-                            className={`w-full p-2 border rounded text-center font-bold ${
-                              isFreeSpace 
-                                ? 'bg-yellow-400 text-black cursor-not-allowed' 
-                                : 'bg-white border-gray-300'
-                            }`}
-                            onChange={(e) => {
-                              const newGrid = [...manualCartelaGrid];
-                              if (!newGrid[row]) newGrid[row] = [];
-                              newGrid[row][col] = isFreeSpace ? 0 : parseInt(e.target.value) || 0;
-                              setManualCartelaGrid(newGrid);
-                            }}
-                          />
-                        );
-                      })}
+                        CSV Import
+                      </h3>
+                      <p className="text-gray-300 mb-6">
+                        Import cartelas from a CSV file with format: <code className="bg-gray-700 px-2 py-1 rounded text-blue-400">cno,user_id,card_no,b,i,n,g,o</code>
+                      </p>
                     </div>
-                    <div className="text-center">
+                    
+                    <div className="space-y-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-3">Select CSV File</label>
+                        <div className="relative">
+                          <input
+                            type="file"
+                            accept=".csv"
+                            onChange={handleCSVImport}
+                            className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white file:mr-4 file:py-3 file:px-4 file:rounded-lg file:border-0 file:text-gray-300 file:bg-gray-700 hover:bg-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+
+                      {importProgress > 0 && (
+                        <div className="mb-6">
+                          <div className="flex justify-between text-sm text-gray-300 mb-2">
+                            <span>Import Progress</span>
+                            <span>{importProgress}%</span>
+                          </div>
+                          <div className="w-full bg-gray-700 rounded-full h-3">
+                            <div 
+                              className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-300"
+                              style={{ width: `${importProgress}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
                       <Button 
-                        className="bg-purple-600 hover:bg-purple-700 text-white"
-                        disabled={saveManualCartelaMutation.isPending}
-                        onClick={handleSaveManualCartela}
+                        className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium py-4 shadow-lg transition-all duration-200"
+                        disabled={!csvFile || csvImportMutation.isPending || isImporting}
+                        onClick={processCSVImport}
                       >
-                        {saveManualCartelaMutation.isPending ? 'Saving...' : 'Save Manual Card'}
+                        {csvImportMutation.isPending || isImporting ? (
+                          <div className="flex items-center">
+                            <svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8 8 8 0 018 8 8 0 01-8 8z" />
+                            </svg>
+                            Importing Cartelas...
+                          </div>
+                        ) : (
+                          <div className="flex items-center">
+                            <Upload className="w-5 h-5 mr-3" />
+                            Import CSV File
+                          </div>
+                        )}
                       </Button>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* Visual Cartela Builder */}
-              <div className="mb-8">
-                <h3 className="text-xl font-bold mb-4 text-gray-800">Visual Cartela Builder</h3>
-                <div className="border-2 border-gray-300 rounded-lg p-6">
-                  <div className="grid grid-cols-5 gap-2 mb-4 max-w-sm mx-auto">
-                    {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => (
-                      <div key={letter} className="text-center font-bold text-lg">
-                        {letter}
-                      </div>
-                    ))}
-                    {Array.from({ length: 25 }, (_, i) => {
-                      const row = Math.floor(i / 5);
-                      const col = i % 5;
-                      const isFreeSpace = row === 2 && col === 2;
-                      
-                      return (
-                        <input
-                          key={i}
-                          type="number"
-                          value={isFreeSpace ? 0 : (manualCartelaGrid[row]?.[col] || '')}
-                          disabled={isFreeSpace}
-                          placeholder={isFreeSpace ? '★' : ''}
-                          className={`w-full p-2 border rounded text-center font-bold ${
-                            isFreeSpace 
-                              ? 'bg-yellow-400 text-black cursor-not-allowed' 
-                              : 'bg-white border-gray-300'
-                          }`}
-                          onChange={(e) => {
-                            const newGrid = [...manualCartelaGrid];
-                            if (!newGrid[row]) newGrid[row] = [];
-                            newGrid[row][col] = isFreeSpace ? 0 : parseInt(e.target.value) || 0;
-                            setManualCartelaGrid(newGrid);
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                  <div className="text-center">
-                    <Button 
-                      className="bg-purple-600 hover:bg-purple-700 text-white"
-                      disabled={saveManualCartelaMutation.isPending}
-                      onClick={handleSaveManualCartela}
-                    >
-                      {saveManualCartelaMutation.isPending ? 'Saving...' : 'Save Manual Card'}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Master Table View */}
-              <div className="mb-8">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-xl font-bold text-gray-800">Master Cartela Table</h3>
-                  {cartelas && cartelas.length > 0 && (
-                    <div className="text-sm text-green-600 bg-green-50 px-3 py-1 rounded-full">
-                      {cartelas.length} cartelas available
+              {activeTab === 'manual' && (
+                <div className="max-w-4xl mx-auto">
+                  <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 shadow-xl">
+                    <div className="mb-8">
+                      <h3 className="text-2xl font-bold text-white mb-4 flex items-center">
+                        <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center mr-3">
+                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                        </div>
+                        Manual Cartela Builder
+                      </h3>
+                      <p className="text-gray-300">
+                        Create a new cartela manually by filling in the bingo grid below.
+                      </p>
                     </div>
-                  )}
-                </div>
-                <div className="border-2 border-gray-300 rounded-lg p-6">
-                  {/* Search */}
-                  <div className="mb-4">
-                    <Input
-                      placeholder="Search cartelas..."
-                      value={cartelaSearchTerm}
-                      onChange={(e) => setCartelaSearchTerm(e.target.value)}
-                      className="max-w-md"
-                    />
-                  </div>
-                  
-                  {/* Table */}
-                  <div className="overflow-x-auto">
-                    {cartelasQueryLoading ? (
-                      <div className="text-center py-8">
-                        <div className="text-gray-500">Loading cartelas...</div>
+
+                    <div className="flex justify-center">
+                      <div className="bg-blue-50 rounded-lg p-4">
+                        <div className="text-center mb-3 text-lg font-bold text-gray-800">Manual Cartela Builder</div>
+                        <div className="flex justify-center">
+                          <div className="bg-white rounded-lg p-3 inline-block shadow-lg">
+                            <div className="grid grid-cols-5 gap-1 mb-2">
+                              <div className="font-bold text-blue-900 text-center text-sm">B</div>
+                              <div className="font-bold text-red-900 text-center text-sm">I</div>
+                              <div className="font-bold text-gray-900 text-center text-sm">N</div>
+                              <div className="font-bold text-green-900 text-center text-sm">G</div>
+                              <div className="font-bold text-yellow-900 text-center text-sm">O</div>
+                            </div>
+                            <div className="grid grid-cols-5 gap-1">
+                              {['B', 'I', 'N', 'G', 'O'].map((letter, colIdx) => (
+                                <div key={letter} className="flex flex-col gap-1">
+                                  {[0, 1, 2, 3, 4].map((rowIdx) => {
+                                    const isCenter = letter === 'N' && rowIdx === 2;
+                                    const value = manualCartelaGrid[rowIdx]?.[colIdx] || '';
+                                    
+                                    return (
+                                      <div
+                                        key={rowIdx}
+                                        className={`w-10 h-10 border-2 rounded flex items-center justify-center font-bold text-sm transition-all ${
+                                          isCenter 
+                                            ? 'bg-yellow-400 text-yellow-900 border-yellow-600' 
+                                            : letter === 'B'
+                                              ? 'bg-red-100 text-red-900 border-red-300 hover:bg-red-200'
+                                              : letter === 'I'
+                                                ? 'bg-orange-100 text-orange-900 border-orange-300 hover:bg-orange-200'
+                                                : letter === 'N'
+                                                  ? 'bg-yellow-100 text-yellow-900 border-yellow-300 hover:bg-yellow-200'
+                                                  : letter === 'G'
+                                                    ? 'bg-green-100 text-green-900 border-green-300 hover:bg-green-200'
+                                                    : 'bg-blue-100 text-blue-900 border-blue-300 hover:bg-blue-200'
+                                        }`}
+                                      >
+                                        {isCenter ? (
+                                          <span className="text-lg">★</span>
+                                        ) : (
+                                          <input
+                                            type="number"
+                                            value={value}
+                                            onChange={(e) => handleManualCartelaChange(rowIdx, colIdx, e.target.value)}
+                                            className={`w-full h-full text-center font-bold bg-transparent outline-none ${
+                                              letter === 'B' ? 'text-red-900' :
+                                              letter === 'I' ? 'text-orange-900' :
+                                              letter === 'N' ? 'text-yellow-900' :
+                                              letter === 'G' ? 'text-green-900' :
+                                              'text-blue-900'
+                                            }`}
+                                            placeholder=""
+                                            min={letter === 'B' ? 1 : letter === 'I' ? 16 : letter === 'N' ? 31 : letter === 'G' ? 46 : 61}
+                                            max={letter === 'B' ? 15 : letter === 'I' ? 30 : letter === 'N' ? 45 : letter === 'G' ? 60 : 75}
+                                            disabled={isCenter}
+                                          />
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    ) : cartelas && cartelas.length > 0 ? (
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="bg-gray-100">
-                            <th className="border border-gray-300 px-4 py-2 text-left">Card Number</th>
-                            <th className="border border-gray-300 px-4 py-2 text-left">Name</th>
-                            <th className="border border-gray-300 px-4 py-2 text-left">Preview</th>
-                            <th className="border border-gray-300 px-4 py-2 text-left">Actions</th>
+                    </div>
+
+                    <div className="text-center mt-6">
+                      <Button 
+                        className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-medium py-4 px-8 shadow-lg transition-all duration-200"
+                        disabled={saveManualCartelaMutation.isPending}
+                        onClick={handleSaveManualCartela}
+                      >
+                        {saveManualCartelaMutation.isPending ? (
+                          <div className="flex items-center">
+                            <svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8 8 8 0 018 8 8 8 0 01-8 8z" />
+                            </svg>
+                            Saving Cartela...
+                          </div>
+                        ) : (
+                          <div className="flex items-center">
+                            <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l3 3m-3-3v4" />
+                            </svg>
+                            Save Manual Cartela
+                          </div>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'table' && (
+                <div className="max-w-6xl mx-auto">
+                  <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 shadow-xl">
+                    <div className="mb-8">
+                      <h3 className="text-2xl font-bold text-white mb-4 flex items-center">
+                        <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center mr-3">
+                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4h10a1 1 0 011 1v4a1 1 0 01-1 1H6a1 1 0 01-1-1v-4a1 1 0 011-1h10z" />
+                          </svg>
+                        </div>
+                        Cartela Table
+                      </h3>
+                      <p className="text-gray-300 mb-6">
+                        View and manage all imported cartelas in the system.
+                      </p>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full bg-gray-800 rounded-lg overflow-hidden">
+                        <thead className="bg-gray-700">
+                          <tr>
+                            <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Card #</th>
+                            <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">User ID</th>
+                            <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">B Column</th>
+                            <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">I Column</th>
+                            <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">N Column</th>
+                            <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">G Column</th>
+                            <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">O Column</th>
+                            <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
                           </tr>
                         </thead>
-                        <tbody>
-                          {cartelas.map((cartela: any) => (
-                            <tr key={cartela.id} className="hover:bg-gray-50">
-                              <td className="border border-gray-300 px-4 py-2 font-semibold">{cartela.cardNo}</td>
-                              <td className="border border-gray-300 px-4 py-2">{cartela.name}</td>
-                              <td className="border border-gray-300 px-4 py-2">
-                                <Button size="sm" variant="outline" onClick={() => setPreviewCard(cartela)}>
-                                  <Eye className="w-4 h-4 mr-1" />
-                                  Preview
-                                </Button>
-                              </td>
-                              <td className="border border-gray-300 px-4 py-2">
-                                <div className="flex gap-2">
-                                  <Button size="sm" variant="outline">
-                                    <Edit className="w-4 h-4 mr-1" />
-                                    Edit
-                                  </Button>
-                                  <Button size="sm" variant="destructive">
-                                    Delete
-                                  </Button>
+                        <tbody className="divide-y divide-gray-700">
+                          {cartelasQueryLoading ? (
+                            <tr>
+                              <td colSpan={8} className="px-6 py-12 text-center text-gray-400">
+                                <div className="flex flex-col items-center">
+                                  <svg className="animate-spin h-8 w-8 text-gray-500 mb-3" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8 8 8 0 018 8 8 8 0 01-8 8z" />
+                                  </svg>
+                                  <span className="text-lg font-medium">Loading cartelas...</span>
                                 </div>
                               </td>
                             </tr>
-                          ))}
+                          ) : cartelas && cartelas.length > 0 ? (
+                            cartelas.map((cartela, index) => (
+                              <tr key={cartela.id} className="hover:bg-gray-700 transition-colors">
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-blue-400">{cartela.cardNo || cartela.cartelaNumber}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{cartela.employeeId}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                  {cartela.pattern ? cartela.pattern.map(row => row[0]).join(', ') : '-'}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                  {cartela.pattern ? cartela.pattern.map(row => row[1]).join(', ') : '-'}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                  {cartela.pattern ? cartela.pattern.map(row => row[2]).join(', ') : '-'}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                  {cartela.pattern ? cartela.pattern.map(row => row[3]).join(', ') : '-'}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                  {cartela.pattern ? cartela.pattern.map(row => row[4]).join(', ') : '-'}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                  <button className="text-blue-400 hover:text-blue-300 transition-colors">
+                                    View
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={8} className="px-6 py-12 text-center text-gray-400">
+                                <div className="flex flex-col items-center">
+                                  <svg className="w-12 h-12 text-gray-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V6a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.707.293H17a2 2 0 012 2v6a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.707.293z" />
+                                  </svg>
+                                  <span className="text-lg font-medium">No cartelas found</span>
+                                  <p className="text-sm text-gray-400 mt-2">
+                                    Import cartelas using the CSV Import tab or create them manually to see them here
+                                  </p>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
                         </tbody>
                       </table>
-                    ) : (
-                      <div className="text-center py-8">
-                        <div className="text-gray-500 mb-2">No cartelas found</div>
-                        <div className="text-sm text-gray-400">
-                          Import cartelas using the CSV Import tab to see them here
+                    </div>
+
+                    {cartelas && cartelas.length > 0 && (
+                      <div className="mt-6 p-4 bg-gray-700 rounded-lg border border-gray-600">
+                        <div className="text-sm text-green-400">
+                          Showing <span className="font-bold text-green-300">{cartelas.length}</span> cartelas in the system
                         </div>
                       </div>
                     )}
                   </div>
-                  
-                  {/* Status Summary */}
-                  {cartelas && cartelas.length > 0 && (
-                    <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                      <div className="text-sm text-blue-800">
-                        Showing all {cartelas.length} imported cartelas
-                      </div>
-                    </div>
-                  )}
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>

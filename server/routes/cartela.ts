@@ -83,6 +83,53 @@ function parseBulkCartelaData(bulkData: string) {
   return results;
 }
 
+// GET /api/cartelas - Get all cartelas (for management table)
+router.get("/", async (req, res) => {
+  try {
+    const { search = "", page = "1", limit = "50" } = req.query;
+    
+    // Validate pagination parameters
+    const pageNum = parseInt(page as string);
+    const limitNum = parseInt(limit as string);
+    
+    if (isNaN(pageNum) || isNaN(limitNum) || pageNum < 1 || limitNum < 1) {
+      return res.status(400).json({ error: "Invalid pagination parameters" });
+    }
+    
+    const offset = (pageNum - 1) * limitNum;
+
+    let query = db.select().from(cartelas);
+    
+    if (search && typeof search === "string" && search.trim()) {
+      // TODO: Add search conditions - for now just continue without search
+      console.log('Search parameter ignored:', search);
+    }
+
+    const cartelasResult = await query
+      .limit(limitNum)
+      .offset(offset)
+      .orderBy(cartelas.cartelaNumber);
+
+    // Add cardNo field for frontend compatibility
+    const cartelasWithCardNo = cartelasResult.map(cartela => ({
+      ...cartela,
+      cardNo: cartela.cardNo || cartela.cartelaNumber, // Use cardNo if available, fallback to cartelaNumber
+      cartelaNumber: cartela.cartelaNumber, // Keep for reference
+      cno: cartela.cartelaNumber, // Keep for compatibility
+      // Parse pattern if it's a string
+      pattern: typeof cartela.pattern === 'string' ? JSON.parse(cartela.pattern) : cartela.pattern
+    }));
+
+    const totalResult = await db.select({ count: count() }).from(cartelas);
+    const total = totalResult[0]?.count || 0;
+
+    res.json(cartelasWithCardNo);
+  } catch (error) {
+    console.error('Cartelas error:', error);
+    res.status(500).json({ error: "Failed to fetch cartelas" });
+  }
+});
+
 // GET /api/cartelas/master - Master table view
 router.get("/master", async (req, res) => {
   try {
