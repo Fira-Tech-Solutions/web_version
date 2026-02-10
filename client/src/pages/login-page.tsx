@@ -104,17 +104,17 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
       {/* Header: thin gray bar, logo left, contact right */}
-      <header className="flex items-center justify-between px-6 lg:px-12 py-4 border-b border-gray-200">
+      <header className="flex items-center justify-between px-6 lg:px-12 py-4 border-b border-gray-200 shadow-lg">
         <img
           src="/go_bingo.png"
           alt="Go Bingo"
           className="h-12 lg:h-14 w-auto object-contain"
         />
         <div className="flex flex-col items-end text-[#1976D2]">
-          <span className="text-sm font-medium">ቢንጎ system ይፈልጋሉ?</span>
-          <div className="flex items-center gap-1.5 mt-0.5">
+          <span className="text-sm font-medium ">ቢንጎ system ይፈልጋሉ?</span>
+          <div className="flex items-center gap-1.5 mt-0.5 ">
             <Phone className="h-4 w-4 shrink-0" />
-            <a href="tel:0939027923" className="text-sm font-medium">0939027923</a>
+            <a href="tel:0951749796" className="text-sm font-medium">0951749796</a>
           </div>
         </div>
       </header>
@@ -122,20 +122,23 @@ export default function LoginPage() {
       {/* Main: left = tagline + large logo, right = login card */}
       <main className="flex-1 flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-16 px-6 py-10 lg:py-16">
         {/* Left: ETHIOPIA'S BEST BINGO SOFTWARE. + large logo */}
-        <div className="flex flex-col items-center lg:items-start lg:flex-1 max-w-xl">
+        <div className="flex flex-col items-center flex-1 max-w-xl mx-auto"> 
           <h1
-            className="text-2xl sm:text-3xl lg:text-4xl font-serif text-[#1976D2] uppercase leading-tight mb-6 text-center lg:text-left"
+            className="text-2xl sm:text-3xl lg:text-4xl font-serif font-bold text-[#1976D2] uppercase leading-tight mb-6 text-center"
             style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
           >
             <span className="block">ETHIOPIA'S BEST</span>
-            <span className="block pl-4 lg:pl-6 mt-1 text-3xl sm:text-4xl lg:text-5xl">BINGO SOFTWARE.</span>
+            {/* Increased font-black for "Stronger" look and removed left padding to keep it centered */}
+            <span className="block mt-1 text-3xl sm:text-4xl lg:text-5xl font-black">
+              BINGO SOFTWARE.
+            </span>
           </h1>
           <img
             src="/go_bingo.png"
             alt="Go Bingo"
-            className="w-full max-w-md lg:max-w-lg h-auto object-contain"
+            className="w-full max-w-xl lg:max-w-3xl h-auto object-contain scale-205" 
           />
-        </div>
+      </div>
 
         {/* Right: login card */}
         <div className="w-full max-w-sm flex flex-col items-center">
@@ -157,7 +160,7 @@ export default function LoginPage() {
                 </span>
                 <Input
                   type="text"
-                  placeholder="tedy sere"
+                  placeholder="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="flex-1 border-0 rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 h-11"
@@ -188,7 +191,7 @@ export default function LoginPage() {
             </form>
 
             <div className="mt-6 pt-6 border-t border-gray-100 text-center">
-              <p className="text-sm text-gray-600 mb-2">New Employee?</p>
+              <p className="text-sm text-gray-600 mb-2">New User?</p>
               <label
                 className="cursor-pointer inline-block px-4 py-2 rounded-md text-sm font-medium transition-colors hover:opacity-90"
                 style={{ backgroundColor: INPUT_BG, color: BRAND_BLUE }}
@@ -197,12 +200,12 @@ export default function LoginPage() {
                 <input
                   type="file"
                   className="hidden"
-                  accept=".bin,.txt"
+                  accept=".enc"
                   onChange={handleFileChange}
                   disabled={registerMutation.isPending}
                 />
               </label>
-              <p className="mt-2 text-[10px] text-gray-400">Upload the .bin file provided by your administrator</p>
+              <p className="mt-2 text-[10px] text-gray-400">Upload the .enc file provided by your administrator</p>
             </div>
           </div>
         </div>
