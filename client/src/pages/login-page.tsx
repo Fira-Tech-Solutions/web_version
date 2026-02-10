@@ -111,18 +111,18 @@ export default function LoginPage() {
           className="h-12 lg:h-14 w-auto object-contain"
         />
         <div className="flex flex-col items-end text-[#1976D2]">
-          <span className="text-sm font-medium ">ቢንጎ system ይፈልጋሉ?</span>
-          <div className="flex items-center gap-1.5 mt-0.5 ">
-            <Phone className="h-4 w-4 shrink-0" />
-            <a href="tel:0951749796" className="text-sm font-medium">0951749796</a>
+          <span className="text-lg font-bold">ቢንጎ system ይፈልጋሉ?</span>
+          <div className="flex items-center gap-2 mt-1">
+            <Phone className="h-5 w-5 shrink-0" />
+            <a href="tel:0951749796" className="text-lg font-bold">0951749796</a>
           </div>
         </div>
       </header>
 
       {/* Main: left = tagline + large logo, right = login card */}
-      <main className="flex-1 flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-16 px-6 py-10 lg:py-16">
+      <main className="flex-1 flex flex-col lg:flex-row items-center justify-center gap-4 lg:gap-24 px-6 py-10 lg:py-16">
         {/* Left: ETHIOPIA'S BEST BINGO SOFTWARE. + large logo */}
-        <div className="flex flex-col items-center flex-1 max-w-xl mx-auto"> 
+        <div className="flex flex-col items-center flex-1 max-w-xl mr-8"> 
           <h1
             className="text-2xl sm:text-3xl lg:text-4xl font-serif font-bold text-[#1976D2] uppercase leading-tight mb-6 text-center"
             style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
@@ -141,52 +141,52 @@ export default function LoginPage() {
       </div>
 
         {/* Right: login card */}
-        <div className="w-full max-w-sm flex flex-col items-center">
+        <div className="w-full max-w-md flex flex-col items-center ml-8">
           <div
-            className="w-full bg-white rounded-xl p-8 border border-gray-100"
-            style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.08)" }}
+            className="w-full bg-white rounded-2xl p-6 border border-gray-200"
+            style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.15)" }}
           >
             <h2
-              className="text-center text-xl font-semibold uppercase tracking-wide mb-6"
+              className="text-center text-lg font-semibold mb-6"
               style={{ color: BRAND_BLUE }}
             >
               Please Login
             </h2>
 
             <form onSubmit={handleLogin} className="space-y-4">
-              <div className="flex items-center gap-3 rounded-md border border-gray-200 overflow-hidden">
-                <span className="pl-3 text-gray-600">
-                  <User className="h-5 w-5" />
+              <div className="flex items-center gap-3 rounded-md border border-gray-300 overflow-hidden">
+                <span className="pl-3 text-gray-500">
+                  <User className="h-4 w-4" />
                 </span>
                 <Input
                   type="text"
                   placeholder="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="flex-1 border-0 rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 h-11"
+                  className="flex-1 border-0 rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 h-10"
                   style={{ backgroundColor: INPUT_BG }}
                 />
               </div>
-              <div className="flex items-center gap-3 rounded-md border border-gray-200 overflow-hidden">
-                <span className="pl-3 text-gray-600">
-                  <Lock className="h-5 w-5" />
+              <div className="flex items-center gap-3 rounded-md border border-gray-300 overflow-hidden">
+                <span className="pl-3 text-gray-500">
+                  <Lock className="h-4 w-4" />
                 </span>
                 <Input
                   type="password"
-                  placeholder="•••••••"
+                  placeholder="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="flex-1 border-0 rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 h-11"
+                  className="flex-1 border-0 rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 h-10"
                   style={{ backgroundColor: INPUT_BG }}
                 />
               </div>
               <Button
                 type="submit"
-                className="w-full h-11 uppercase font-semibold text-white rounded-md"
+                className="w-full h-10 font-medium text-white rounded-md"
                 style={{ backgroundColor: BRAND_BLUE }}
                 disabled={loginMutation.isPending}
               >
-                {loginMutation.isPending ? "Logging in..." : "Login"}
+                {loginMutation.isPending ? "Logging in..." : "LOGIN"}
               </Button>
             </form>
 
