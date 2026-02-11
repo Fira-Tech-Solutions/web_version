@@ -51,6 +51,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const [isShuffling, setIsShuffling] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState<string>("arada");
   const autoCallInterval = useRef<NodeJS.Timeout | null>(null);
+  const calledNumbersRef = useRef<number[]>([]);
 
   // Cartela Management state
   const [showCartelaManagement, setShowCartelaManagement] = useState(false);
@@ -669,8 +670,8 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       return response.json();
     },
     onSuccess: () => {
-      // Refresh active game data
-      queryClient.invalidateQueries({ queryKey: ['/api/games/active'] });
+      // Don't invalidate active game query to prevent race conditions
+      // Local state is the source of truth
     },
     onError: (error: any) => {
       console.error('Failed to save called numbers:', error);
@@ -733,9 +734,10 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     });
   };
 
-// Sync called numbers from backend when active game changes
+// Initialize called numbers from backend when component mounts or game changes
   useEffect(() => {
-    if (activeGame && (activeGame as any)?.calledNumbers && Array.isArray((activeGame as any).calledNumbers)) {
+    if (activeGame && (activeGame as any)?.calledNumbers && Array.isArray((activeGame as any).calledNumbers) && calledNumbers.length === 0) {
+      // Only initialize if we don't have any local numbers yet
       const backendNumbers = (activeGame as any).calledNumbers.map((n: any) => typeof n === 'string' ? parseInt(n) : n);
       setCalledNumbers(backendNumbers);
       if (backendNumbers.length > 0) {
@@ -743,6 +745,11 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       }
     }
   }, [activeGame]);
+
+  // Sync calledNumbersRef with calledNumbers state
+  useEffect(() => {
+    calledNumbersRef.current = calledNumbers;
+  }, [calledNumbers]);
 
   // Helper function to get letter for number
   const { data: cartelas, isLoading: cartelasQueryLoading, refetch } = useQuery({
@@ -791,7 +798,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   // Call number handler with voice synthesis
   const handleCallNumber = async () => {
     const availableNumbers = Array.from({ length: 75 }, (_, i) => i + 1)
-      .filter(n => !calledNumbers.includes(n));
+      .filter(n => !calledNumbersRef.current.includes(n));
 
     if (availableNumbers.length === 0) {
       // Stop auto-calling if all numbers are called
@@ -804,10 +811,10 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
     setIsCallingNumber(true);
 
-    // Update UI state immediately
+    // Update UI state immediately using functional update
     setCurrentNumber(newNumber);
-    const newCalledNumbers = [...calledNumbers, newNumber];
-    setCalledNumbers(newCalledNumbers);
+    const newCalledNumbers = [...calledNumbersRef.current, newNumber];
+    setCalledNumbers(prev => [...prev, newNumber]);
     
     console.log(`Called number: ${newNumber}, Total called: ${newCalledNumbers.length}`, newCalledNumbers);
 
