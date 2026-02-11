@@ -811,12 +811,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     
     console.log(`Called number: ${newNumber}, Total called: ${newCalledNumbers.length}`, newCalledNumbers);
 
-    // Show toast immediately
-    toast({
-      title: "Number Called",
-      description: `${getLetterForNumber(newNumber)} ${newNumber}`
-    });
-
+    
     // Save to backend if there's an active game
     if ((activeGame as any)?.id) {
       updateCalledNumbersMutation.mutate({
