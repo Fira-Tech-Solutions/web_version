@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Upload, X, Settings, Trophy, Eye, EyeOff, Edit } from "lucide-react";
+import { Upload, X, Settings, Trophy, Eye, EyeOff, Edit, Trash2 } from "lucide-react";
 import { customBingoVoice } from "@/lib/custom-voice-synthesis";
 import Papa from 'papaparse';
 
@@ -61,6 +61,10 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const [activeTab, setActiveTab] = useState<'import' | 'manual' | 'table'>('import');
   const [importProgress, setImportProgress] = useState<number>(0);
   const [isImporting, setIsImporting] = useState(false);
+  const [editingCartela, setEditingCartela] = useState<any>(null);
+  const [isEditingPreview, setIsEditingPreview] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [cartelaToDelete, setCartelaToDelete] = useState<any>(null);
 
   // CSV Import mutation
   const csvImportMutation = useMutation({
@@ -138,6 +142,90 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
         variant: "destructive"
       });
     },
+  });
+
+  // Save Manual Cartela mutation
+  const saveManualCartelaMutation = useMutation({
+    mutationFn: async (grid: number[][]) => {
+      const response = await fetch('/api/cartelas/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grid })
+      });
+      if (!response.ok) throw new Error('Failed to save manual cartela');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/cartelas'] });
+      toast({
+        title: "Success",
+        description: "Manual cartela saved successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to save manual cartela",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Update Cartela mutation
+  const updateCartelaMutation = useMutation({
+    mutationFn: async ({ id, cartelaNumber, name, pattern }: { id: number; cartelaNumber: number; name: string; pattern: number[][] }) => {
+      const response = await fetch(`/api/cartelas/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cartelaNumber, name, pattern: JSON.stringify(pattern) })
+      });
+      if (!response.ok) throw new Error('Failed to update cartela');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/cartelas'] });
+      setIsEditingPreview(false);
+      setEditingCartela(null);
+      setPreviewCard(null);
+      toast({
+        title: "Success",
+        description: "Cartela updated successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to update cartela",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Delete Cartela mutation
+  const deleteCartelaMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await fetch(`/api/cartelas/${id}`, {
+        method: 'DELETE'
+      });
+      if (!response.ok) throw new Error('Failed to delete cartela');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/cartelas'] });
+      setShowDeleteConfirm(false);
+      setCartelaToDelete(null);
+      toast({
+        title: "Success",
+        description: "Cartela deleted successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to delete cartela",
+        variant: "destructive"
+      });
+    }
   });
 
   // Handle CSV Import
@@ -410,40 +498,6 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     reader.readAsText(csvFile);
   };
 
-  // Save Manual Cartela mutation
-  const saveManualCartelaMutation = useMutation({
-    mutationFn: async (grid: number[][]) => {
-      const response = await fetch('/api/cartelas/manual', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ grid }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to save manual cartela');
-      }
-      
-      return response.json();
-    },
-    onSuccess: (data) => {
-      toast({
-        title: "Manual Cartela Saved",
-        description: `Successfully saved cartela with serial ${data.cno}`
-      });
-      setManualCartelaGrid([]);
-      queryClient.invalidateQueries({ queryKey: ['/api/cartelas'] });
-    },
-    onError: (error) => {
-      toast({
-        title: "Save Failed",
-        description: error.message,
-        variant: "destructive"
-      });
-    }
-  });
-
   // Handle Save Manual Cartela
   const handleSaveManualCartela = () => {
     // Validate grid structure
@@ -627,6 +681,57 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       });
     },
   });
+
+  // Handle Edit Cartela (opens preview modal in edit mode)
+  const handleEditCartela = (cartela: any) => {
+    setEditingCartela({
+      ...cartela,
+      pattern: cartela.pattern || []
+    });
+    setIsEditingPreview(true);
+    setPreviewCard(cartela);
+  };
+
+  // Handle Update Cartela
+  const handleUpdateCartela = () => {
+    if (!editingCartela) return;
+    
+    updateCartelaMutation.mutate({
+      id: editingCartela.id,
+      cartelaNumber: editingCartela.cartelaNumber,
+      name: editingCartela.name,
+      pattern: editingCartela.pattern
+    });
+  };
+
+  // Handle Delete Cartela
+  const handleDeleteCartela = (cartela: any) => {
+    setCartelaToDelete(cartela);
+    setShowDeleteConfirm(true);
+  };
+
+  // Confirm Delete
+  const confirmDelete = () => {
+    if (cartelaToDelete) {
+      deleteCartelaMutation.mutate(cartelaToDelete.id);
+    }
+  };
+
+  // Handle Cartela Grid Change in Edit
+  const handleEditCartelaChange = (row: number, col: number, value: string) => {
+    const numValue = value === '' ? 0 : parseInt(value);
+    const newGrid = [...editingCartela.pattern];
+    
+    if (!newGrid[row]) {
+      newGrid[row] = [];
+    }
+    
+    newGrid[row][col] = numValue;
+    setEditingCartela({
+      ...editingCartela,
+      pattern: newGrid
+    });
+  };
 
 // Sync called numbers from backend when active game changes
   useEffect(() => {
@@ -1403,8 +1508,11 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                             <button
                               onClick={() => {
                                 if (isEditMode) {
-                                  // In edit mode, open edit dialog
-                                  setEditingCard(cardNum);
+                                  // In edit mode, open preview modal in edit mode
+                                  const cartela = cartelas.find((c: any) => c.cardNo === cardNum);
+                                  if (cartela) {
+                                    handleEditCartela(cartela);
+                                  }
                                 } else {
                                   // In normal mode, toggle selection
                                   const newSelected = new Set(selectedCards);
@@ -2545,9 +2653,29 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                                   {cartela.pattern ? cartela.pattern.map(row => row[4]).join(', ') : '-'}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                  <button className="text-blue-400 hover:text-blue-300 transition-colors">
-                                    View
-                                  </button>
+                                  <div className="flex gap-2">
+                                    <button 
+                                      onClick={() => setPreviewCard(cartela)}
+                                      className="text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+                                    >
+                                      <Eye className="w-4 h-4" />
+                                      View
+                                    </button>
+                                    <button 
+                                      onClick={() => handleEditCartela(cartela)}
+                                      className="text-green-400 hover:text-green-300 transition-colors flex items-center gap-1"
+                                    >
+                                      <Edit className="w-4 h-4" />
+                                      Edit
+                                    </button>
+                                    <button 
+                                      onClick={() => handleDeleteCartela(cartela)}
+                                      className="text-red-400 hover:text-red-300 transition-colors flex items-center gap-1"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                      Delete
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))
@@ -2590,21 +2718,64 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[80] p-4">
           <div className="bg-white text-black rounded-lg shadow-2xl max-w-md w-full">
             {/* Header */}
-            <div className="bg-white px-4 py-3 rounded-t-lg flex justify-between items-center border-b">
-              <h2 className="text-xl font-bold text-black">Card #{previewCard.cardNo}</h2>
-              <button
-                onClick={() => setPreviewCard(null)}
-                className="text-gray-600 hover:text-gray-800"
-              >
-                <X className="w-5 h-5" />
-              </button>
+            <div className={`${isEditingPreview ? 'bg-blue-600' : 'bg-white'} px-4 py-3 rounded-t-lg flex justify-between items-center border-b`}>
+              <h2 className={`text-xl font-bold ${isEditingPreview ? 'text-white' : 'text-black'}`}>
+                {isEditingPreview ? 'Edit' : 'View'} Card #{previewCard.cardNo}
+              </h2>
+              <div className="flex gap-2">
+                {!isEditingPreview && (
+                  <button
+                    onClick={() => handleEditCartela(previewCard)}
+                    className="text-blue-600 hover:text-blue-800 font-medium text-sm"
+                  >
+                    Edit
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setPreviewCard(null);
+                    setIsEditingPreview(false);
+                    setEditingCartela(null);
+                  }}
+                  className={`${isEditingPreview ? 'text-white hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'}`}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Card Content */}
             <div className="p-6 bg-gray-50">
-              <div className="text-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-700">Card Layout</h3>
-              </div>
+              {!isEditingPreview && (
+                <div className="text-center mb-4">
+                  <h3 className="text-lg font-semibold text-gray-700">Card Layout</h3>
+                </div>
+              )}
+
+              {isEditingPreview && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Cartela Number</label>
+                  <Input
+                    type="number"
+                    value={editingCartela?.cartelaNumber || previewCard.cartelaNumber}
+                    onChange={(e) => setEditingCartela({
+                      ...editingCartela,
+                      cartelaNumber: parseInt(e.target.value)
+                    })}
+                    className="w-full mb-3"
+                  />
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
+                  <Input
+                    type="text"
+                    value={editingCartela?.name || previewCard.name || ''}
+                    onChange={(e) => setEditingCartela({
+                      ...editingCartela,
+                      name: e.target.value
+                    })}
+                    className="w-full"
+                  />
+                </div>
+              )}
               
               <div className="bg-white rounded-lg p-4 mx-auto border-2 border-gray-300" style={{ maxWidth: '350px' }}>
                 {/* Column Headers */}
@@ -2628,7 +2799,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                       );
                     }
                     
-                    const cardNumbers = cartela.pattern;
+                    const cardNumbers = isEditingPreview ? editingCartela?.pattern : (cartela.pattern || []);
                     if (!cardNumbers || !Array.isArray(cardNumbers)) {
                       return (
                         <div className="col-span-5 text-center text-gray-500 py-8">
@@ -2643,6 +2814,18 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                         {Array.from({ length: 5 }, (_, col) => {
                           const isFreeSpace = row === 2 && col === 2; // Center space
                           const number = cardNumbers[row]?.[col];
+
+                          if (isEditingPreview && !isFreeSpace) {
+                            return (
+                              <Input
+                                key={col}
+                                type="number"
+                                value={number || ''}
+                                onChange={(e) => handleEditCartelaChange(row, col, e.target.value)}
+                                className="w-full text-center text-sm"
+                              />
+                            );
+                          }
 
                           return (
                             <div
@@ -2665,13 +2848,70 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                 </div>
               </div>
 
-              {/* Close Button */}
-              <div className="mt-6 text-center">
+              {/* Action Buttons for Edit Mode */}
+              {isEditingPreview && (
+                <div className="flex gap-3 justify-end mt-6">
+                  <Button
+                    onClick={() => {
+                      setIsEditingPreview(false);
+                      setEditingCartela(null);
+                    }}
+                    variant="outline"
+                    className="px-6"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleUpdateCartela}
+                    disabled={updateCartelaMutation.isPending}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6"
+                  >
+                    {updateCartelaMutation.isPending ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && cartelaToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[80] p-4">
+          <div className="bg-white text-black rounded-lg shadow-2xl max-w-md w-full">
+            {/* Header */}
+            <div className="bg-red-600 px-4 py-3 rounded-t-lg">
+              <h2 className="text-xl font-bold text-white">Confirm Delete</h2>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 bg-gray-50">
+              <div className="text-center mb-6">
+                <Trash2 className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                <p className="text-lg text-gray-700 mb-2">
+                  Are you sure you want to delete this cartela?
+                </p>
+                <div className="bg-gray-200 rounded-lg p-3">
+                  <p className="font-bold text-gray-800">Cartela #{cartelaToDelete.cartelaNumber || cartelaToDelete.cardNo}</p>
+                  <p className="text-sm text-gray-600">{cartelaToDelete.name || 'Unnamed Cartela'}</p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3">
                 <Button
-                  onClick={() => setPreviewCard(null)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  variant="outline"
+                  className="flex-1"
                 >
-                  Close
+                  Cancel
+                </Button>
+                <Button
+                  onClick={confirmDelete}
+                  disabled={deleteCartelaMutation.isPending}
+                  className="bg-red-600 hover:bg-red-700 text-white flex-1"
+                >
+                  {deleteCartelaMutation.isPending ? 'Deleting...' : 'Delete'}
                 </Button>
               </div>
             </div>
