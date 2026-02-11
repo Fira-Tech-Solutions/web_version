@@ -1,3 +1,3 @@
 // Database exports
-export { db } from './sqlite';
+export { db, sqlite } from './sqlite';
 export { getLicenseDb } from './license-db';

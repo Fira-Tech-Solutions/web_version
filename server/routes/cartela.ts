@@ -431,81 +431,167 @@ router.post("/import", async (req, res) => {
     const { cartelas: cartelaDataList } = req.body;
     let imported = 0;
     let errors = [];
-    const now = new Date(); // Date object for timestamp mode
+    const now = new Date();
 
-    console.log(`Starting import of ${cartelaDataList?.length || 0} cartelas`);
+    console.log(`Starting clear-and-bulk import of ${cartelaDataList?.length || 0} cartelas`);
 
-    // Get authenticated employee ID from session
+    // Get authenticated employee ID from session - ignore user_id in CSV
     const user = (req as any).session?.user;
-    const defaultEmployeeId = user?.id || 1; // Fallback to 1 for now
-
-    for (const cartelaData of cartelaDataList) {
-      try {
-        // Validate cartela data before insertion
-        if (!cartelaData.cno || !cartelaData.grid) {
-          throw new Error('Missing required fields: cno or grid');
-        }
-
-        // Use user_id from CSV if provided, otherwise use authenticated user
-        const employeeId = cartelaData.user_id ? parseInt(cartelaData.user_id) : defaultEmployeeId;
-
-        // Check if cartela already exists for this employee
-        const existing = await db.select()
-          .from(cartelas)
-          .where(and(
-            eq(cartelas.employeeId, employeeId),
-            eq(cartelas.cartelaNumber, cartelaData.cno)
-          ))
-          .limit(1);
-
-        if (existing.length > 0) {
-          // Update existing cartela
-          await db.update(cartelas)
-            .set({
-              name: `Cartela ${cartelaData.cno}`,
-              pattern: cartelaData.grid,
-              cardNo: cartelaData.card_no || cartelaData.cno, // Use card_no from CSV
-              updatedAt: new Date(),
-            })
-            .where(and(
-              eq(cartelas.employeeId, employeeId),
-              eq(cartelas.cartelaNumber, cartelaData.cno)
-            ));
-          console.log(`Updated cartela ${cartelaData.cno} for employee ${employeeId}`);
-        } else {
-          // Insert new cartela
-          await db.insert(cartelas)
-            .values({
-              employeeId,
-              cartelaNumber: cartelaData.cno,
-              cardNo: cartelaData.card_no || cartelaData.cno, // Use card_no from CSV
-              name: `Cartela ${cartelaData.cno}`,
-              pattern: cartelaData.grid,
-              isHardcoded: false,
-              isActive: true,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            });
-          console.log(`Inserted cartela ${cartelaData.cno} with card_no ${cartelaData.card_no} for employee ${employeeId}`);
-        }
-        
-        imported++;
-      } catch (error) {
-        const errorMsg = `Failed to import cartela ${cartelaData.cno}: ${error.message || error}`;
-        console.error(errorMsg);
-        errors.push(errorMsg);
-      }
+    const employeeId = user?.id;
+    
+    if (!employeeId) {
+      return res.status(401).json({ error: "User not authenticated" });
     }
 
-    console.log(`Import completed: ${imported} successful, ${errors.length} failed`);
+    // Generate batch_cno string using current Year and Month (e.g., "202602")
+    const currentDate = new Date();
+    const batchCno = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+
+    // Validate cartela data before processing
+    const validatedCartelas = [];
+    for (const cartelaData of cartelaDataList) {
+      if (!cartelaData.cno) {
+        errors.push(`Missing required field: cno for cartela`);
+        continue;
+      }
+
+      let grid;
+      
+      // Handle both formats: direct grid (from client) or B,I,N,G,O columns (from CSV)
+      if (cartelaData.grid) {
+        // Pre-processed grid format (from client-side processing)
+        try {
+          grid = typeof cartelaData.grid === 'string' ? JSON.parse(cartelaData.grid) : cartelaData.grid;
+          
+          if (!Array.isArray(grid) || grid.length !== 5 || !grid.every(row => Array.isArray(row) && row.length === 5)) {
+            throw new Error('Grid must be a 5x5 array');
+          }
+          
+        } catch (parseError) {
+          errors.push(`Invalid grid format for cartela ${cartelaData.cno}: ${parseError.message}`);
+          continue;
+        }
+      } else if (cartelaData.b && cartelaData.i && cartelaData.n && cartelaData.g && cartelaData.o) {
+        // Raw CSV format with B,I,N,G,O columns
+        try {
+          // Parse B,I,N,G,O columns from string arrays to number arrays
+          const b = cartelaData.b ? cartelaData.b.split(',').map((n: string) => parseInt(n.trim())) : [];
+          const i = cartelaData.i ? cartelaData.i.split(',').map((n: string) => parseInt(n.trim())) : [];
+          const n = cartelaData.n ? cartelaData.n.split(',').map((n: string) => parseInt(n.trim())) : [];
+          const g = cartelaData.g ? cartelaData.g.split(',').map((n: string) => parseInt(n.trim())) : [];
+          const o = cartelaData.o ? cartelaData.o.split(',').map((n: string) => parseInt(n.trim())) : [];
+          
+          // Combine into 5x5 grid (5 rows x 5 columns)
+          grid = [];
+          for (let rowIndex = 0; rowIndex < 5; rowIndex++) {
+            grid[rowIndex] = [
+              b[rowIndex] || 0,  // B column value for this row
+              i[rowIndex] || 0,  // I column value for this row
+              n[rowIndex] || 0,  // N column value for this row
+              g[rowIndex] || 0,  // G column value for this row
+              o[rowIndex] || 0   // O column value for this row
+            ];
+          }
+          
+          // Validate grid structure
+          if (!grid.every(row => row.length === 5)) {
+            throw new Error('Invalid B,I,N,G,O column data - must have 5 values each');
+          }
+          
+        } catch (parseError) {
+          errors.push(`Invalid B,I,N,G,O format for cartela ${cartelaData.cno}: ${parseError.message}`);
+          continue;
+        }
+      } else {
+        errors.push(`Missing grid data or B,I,N,G,O columns for cartela ${cartelaData.cno}`);
+        continue;
+      }
+      
+      // Ensure center space is 0 (FREE)
+      if (grid[2][2] !== 0) {
+        grid[2][2] = 0;
+      }
+
+      validatedCartelas.push({
+        cartelaNumber: parseInt(cartelaData.cno),
+        cardNo: cartelaData.card_no ? parseInt(cartelaData.card_no) : parseInt(cartelaData.cno),
+        name: `Cartela ${cartelaData.cno}`,
+        pattern: JSON.stringify(grid),
+        isHardcoded: false,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    if (validatedCartelas.length === 0) {
+      return res.status(400).json({ 
+        error: "No valid cartelas to import", 
+        errors,
+        total: cartelaDataList?.length || 0
+      });
+    }
+
+    // Perform atomic clear-and-bulk-insert operation
+    const { sqlite } = await import("../db/index.js");
+    
+    try {
+      // Begin transaction
+      sqlite.exec('BEGIN TRANSACTION');
+
+      // Step 1: Clear existing cartelas for this employee
+      const deleteResult = sqlite.prepare('DELETE FROM cartelas WHERE employee_id = ?').run(employeeId);
+      console.log(`Cleared ${deleteResult.changes} existing cartelas for employee ${employeeId}`);
+
+      // Step 2: Bulk insert new cartelas
+      const insertStmt = sqlite.prepare(`
+        INSERT INTO cartelas (
+          employee_id, cartela_number, card_no, name, pattern, 
+          is_hardcoded, is_active, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      // Use transaction for bulk insert
+      const transaction = sqlite.transaction((cartelas) => {
+        for (const cartela of cartelas) {
+          insertStmt.run(
+            employeeId,
+            cartela.cartelaNumber,
+            cartela.cardNo,
+            cartela.name,
+            cartela.pattern,
+            cartela.isHardcoded ? 1 : 0,
+            cartela.isActive ? 1 : 0,
+            cartela.createdAt.getTime(),
+            cartela.updatedAt.getTime()
+          );
+        }
+      });
+
+      transaction(validatedCartelas);
+      imported = validatedCartelas.length;
+
+      // Commit transaction
+      sqlite.exec('COMMIT');
+      console.log(`Successfully imported ${imported} cartelas for employee ${employeeId} (batch: ${batchCno})`);
+
+    } catch (transactionError) {
+      // Rollback on any error
+      sqlite.exec('ROLLBACK');
+      console.error('Transaction failed, rolled back:', transactionError);
+      throw transactionError;
+    }
 
     // Return detailed status
     res.json({
       imported,
       errors,
       total: cartelaDataList?.length || 0,
-      success: errors.length === 0
+      success: errors.length === 0,
+      batchCno,
+      employeeId
     });
+
   } catch (error) {
     console.error("Error importing cartelas:", error);
     res.status(500).json({ error: "Failed to import cartelas" });

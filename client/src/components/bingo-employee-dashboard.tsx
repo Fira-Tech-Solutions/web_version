@@ -86,9 +86,11 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       
       // Show detailed import status
       if (data.success) {
-        let message = data.imported > 0 
-          ? `Successfully imported ${data.imported} cartelas`
-          : "No cartelas were imported";
+        let message = `Successfully processed ${data.total} cartelas`;
+        
+        if (data.imported > 0) {
+          message += ` - ${data.imported} imported/updated`;
+        }
         
         if (data.errors && data.errors.length > 0) {
           message += ` (${data.errors.length} failed)`;
@@ -104,6 +106,15 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
         if (data.errors && data.errors.length > 0) {
           console.log('Import errors:', data.errors);
         }
+        
+        // Refresh cartelas data to show latest imports
+        refetch();
+        
+        // Close cartela management dialog after successful import
+        setTimeout(() => {
+          setShowCartelaManagement(false);
+        }, 2000);
+        
       } else {
         toast({
           title: "CSV Import Failed",
@@ -117,9 +128,6 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
         setCsvFile(null);
         setImportProgress(0);
       }, 1000);
-      
-      // Refresh cartelas list
-      queryClient.invalidateQueries({ queryKey: ['/api/cartelas'] });
     },
     onError: (error) => {
       setImportProgress(0);
@@ -303,26 +311,37 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     setIsImporting(true);
     setImportProgress(0);
 
-    Papa.parse(csvFile, {
-      header: true,
-      skipEmptyLines: true,
-      step: function(row: any) {
-        // Update progress during parsing
-        const totalRows = 100; // Estimate for percentage
-        const currentProgress = Math.min(50, Math.floor((row.meta.cursor / csvFile.size) * 50));
-        setImportProgress(currentProgress);
-      },
-      complete: (results) => {
-        try {
-          const totalRows = results.data.length;
-          let processedCount = 0;
+    // Debug: log the raw file content first
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const rawContent = e.target?.result as string;
+      console.log('Raw CSV content:', rawContent);
+      console.log('File size:', csvFile.size);
+      console.log('File type:', csvFile.type);
+      
+      // Parse with PapaParse
+      Papa.parse(csvFile, {
+        header: true,
+        skipEmptyLines: true,
+        dynamicTyping: false, // Keep everything as strings for manual parsing
+        complete: (results) => {
+          console.log('PapaParse results:', JSON.stringify(results, null, 2));
+          console.log('Data length:', results.data.length);
+          console.log('First row:', JSON.stringify(results.data[0], null, 2));
+          console.log('Errors:', JSON.stringify(results.errors, null, 2));
+          console.log('Meta:', JSON.stringify(results.meta, null, 2));
+          
+          try {
+            const totalRows = results.data.length;
+            let processedCount = 0;
 
-          const cartelaData = results.data.map((row: any) => {
+            const cartelaData = results.data.map((row: any) => {
+            
             // Parse CSV row according to format: cno,user_id,card_no,b,i,n,g,o
             const cno = parseInt(row.cno);
-            const userId = parseInt(row.user_id);
+            const userId = user?.id || 1; // Override with current logged-in user ID
             const cardNo = parseInt(row.card_no);
-            
+             
             // Parse B,I,N,G,O columns from string arrays to number arrays
             // Each column contains all values for that column (column-based format)
             const b = row.b ? row.b.split(',').map((n: string) => parseInt(n.trim())) : [];
@@ -330,7 +349,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
             const n = row.n ? row.n.split(',').map((n: string) => parseInt(n.trim())) : [];
             const g = row.g ? row.g.split(',').map((n: string) => parseInt(n.trim())) : [];
             const o = row.o ? row.o.split(',').map((n: string) => parseInt(n.trim())) : [];
-            
+          
             // Combine into 5x5 grid (5 rows x 5 columns)
             // Each array contains all values for that column
             const grid: number[][] = [];
@@ -351,9 +370,14 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
             return {
               cno,
-              userId,
-              cardNo,
-              grid: JSON.stringify(grid)
+              user_id: userId, // Override with current logged-in user ID
+              card_no: cardNo,
+              // Send raw B,I,N,G,O columns for server-side processing
+              b: row.b,
+              i: row.i,
+              n: row.n,
+              g: row.g,
+              o: row.o
             };
           });
 
@@ -372,6 +396,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
         }
       },
       error: (error) => {
+        console.error('PapaParse error:', error);
         setIsImporting(false);
         setImportProgress(0);
         toast({
@@ -380,7 +405,9 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
           variant: "destructive"
         });
       }
-    });
+      });
+    };
+    reader.readAsText(csvFile);
   };
 
   // Save Manual Cartela mutation
@@ -613,13 +640,15 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   }, [activeGame]);
 
   // Helper function to get letter for number
-  const { data: cartelas, isLoading: cartelasQueryLoading } = useQuery({
-    queryKey: ['/api/cartelas'],
+  const { data: cartelas, isLoading: cartelasQueryLoading, refetch } = useQuery({
+    queryKey: ['/api/cartelas', user?.id],
     queryFn: async () => {
-      const response = await fetch('/api/cartelas');
+      if (!user?.id) return [];
+      const response = await fetch(`/api/cartelas/${user.id}`);
       if (!response.ok) return [];
       return response.json();
     },
+    enabled: !!user?.id, // Only enabled when user is logged in
   });
 
   // Helper function to get letter for number
@@ -2279,15 +2308,24 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
                       {importProgress > 0 && (
                         <div className="mb-6">
-                          <div className="flex justify-between text-sm text-gray-300 mb-2">
-                            <span>Import Progress</span>
-                            <span>{importProgress}%</span>
-                          </div>
-                          <div className="w-full bg-gray-700 rounded-full h-3">
-                            <div 
-                              className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-300"
-                              style={{ width: `${importProgress}%` }}
-                            />
+                          <div className="space-y-4">
+                            <div className="flex justify-between text-sm text-gray-300 mb-2">
+                              <span>Import Progress</span>
+                              <span>{importProgress}%</span>
+                            </div>
+                            <div className="w-full bg-gray-700 rounded-full h-3">
+                              <div 
+                                className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-300"
+                                style={{ width: `${importProgress}%` }}
+                              />
+                            </div>
+                            {isImporting && (
+                              <div className="text-center text-sm text-blue-400">
+                                {importProgress < 50 ? 'Reading CSV file...' : 
+                                 importProgress < 90 ? 'Processing cartela data...' : 
+                                 'Saving to database...'}
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
@@ -2301,7 +2339,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                           <div className="flex items-center">
                             <svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8 8 8 0 018 8 8 0 01-8 8z" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8 8 8 0 01-8 8z" />
                             </svg>
                             Importing Cartelas...
                           </div>
@@ -2433,7 +2471,8 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                 <div className="max-w-6xl mx-auto">
                   <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 shadow-xl">
                     <div className="mb-8">
-                      <h3 className="text-2xl font-bold text-white mb-4 flex items-center">
+                      <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-2xl font-bold text-white flex items-center">
                         <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center mr-3">
                           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4h10a1 1 0 011 1v4a1 1 0 01-1 1H6a1 1 0 01-1-1v-4a1 1 0 011-1h10z" />
@@ -2441,6 +2480,18 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                         </div>
                         Cartela Table
                       </h3>
+                      <Button
+                        onClick={() => refetch()}
+                        disabled={cartelasQueryLoading}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center"
+                      >
+                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5.586a2 2 0 011.414 1.414l5 5a2 2 0 011.414 0l5-5A2 2 0 0118 9.586V4a2 2 0 00-2-2H6a2 2 0 00-2 2z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 9l3 3m0 0l-3-3m3 3v-6" />
+                        </svg>
+                        Refresh
+                      </Button>
+                    </div>
                       <p className="text-gray-300 mb-6">
                         View and manage all imported cartelas in the system.
                       </p>
