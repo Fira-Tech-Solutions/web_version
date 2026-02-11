@@ -874,17 +874,78 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const handleShuffle = async () => {
     if (isShuffling) return;
     
+    // Pause the game when shuffling
+    const wasAutoCalling = isAutoCalling;
+    if (isAutoCalling) {
+      setWasAutoCalling(true);
+      stopAutoCalling();
+    } else {
+      setWasAutoCalling(false);
+    }
+    
     setIsShuffling(true);
     
-    // Play shuffle sound (non-blocking)
-    customBingoVoice.playShuffle().catch(error => {
-      console.warn('Error playing shuffle sound:', error);
-    });
-    
-    // Stop shuffling after 3 seconds
-    setTimeout(() => {
-      setIsShuffling(false);
-    }, 3000);
+    // Get shuffle audio duration and sync with animation
+    try {
+      const audio = new Audio('/voices/common/shuffle.mp3');
+      
+      audio.addEventListener('loadedmetadata', () => {
+        const audioDuration = audio.duration * 1000; // Convert to milliseconds
+        const animationDuration = Math.max(audioDuration, 3000); // Use audio duration or 3s minimum
+        
+        // Play shuffle sound
+        customBingoVoice.playShuffle().catch(error => {
+          console.warn('Error playing shuffle sound:', error);
+        });
+        
+        // Stop shuffling when audio completes (synchronized)
+        setTimeout(() => {
+          setIsShuffling(false);
+          // Resume auto-calling if it was active before
+          if (wasAutoCalling) {
+            setWasAutoCalling(false);
+            startAutoCalling();
+          }
+        }, animationDuration);
+      });
+      
+      audio.addEventListener('error', () => {
+        console.warn('Could not load shuffle audio, using default 3s duration');
+        
+        // Play shuffle sound anyway
+        customBingoVoice.playShuffle().catch(error => {
+          console.warn('Error playing shuffle sound:', error);
+        });
+        
+        // Use default 3-second duration
+        setTimeout(() => {
+          setIsShuffling(false);
+          if (wasAutoCalling) {
+            setWasAutoCalling(false);
+            startAutoCalling();
+          }
+        }, 3000);
+      });
+      
+      // Load the audio to get duration
+      audio.load();
+      
+    } catch (error) {
+      console.warn('Error setting up shuffle audio:', error);
+      
+      // Fallback: play sound and use default 3s duration
+      customBingoVoice.playShuffle().catch(error => {
+        console.warn('Error playing shuffle sound:', error);
+      });
+      
+      setTimeout(() => {
+        setIsShuffling(false);
+        if (wasAutoCalling) {
+          setWasAutoCalling(false);
+          startAutoCalling();
+        }
+      }, 3000);
+    }
   };
 
   // Force re-render for checked card result
