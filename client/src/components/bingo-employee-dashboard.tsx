@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Upload, X, Settings, Trophy, Eye, EyeOff, Edit, Trash2 } from "lucide-react";
+import { Upload, X, Settings, Trophy, Eye, EyeOff, Edit, Trash2, Sparkles } from "lucide-react";
 import { customBingoVoice } from "@/lib/custom-voice-synthesis";
 import Papa from 'papaparse';
 
@@ -29,6 +29,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const [speed, setSpeed] = useState(4);
   const [isAutoPlay, setIsAutoPlay] = useState(false);
   const [checkCardInput, setCheckCardInput] = useState("");
+  const [wasAutoCalling, setWasAutoCalling] = useState(false);
   const [isManual, setIsManual] = useState(false);
   const [selectedCards, setSelectedCards] = useState<Set<number>>(new Set());
   const [topUpFee, setTopUpFee] = useState("10");
@@ -66,6 +67,8 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const [isEditingPreview, setIsEditingPreview] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [cartelaToDelete, setCartelaToDelete] = useState<any>(null);
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [winnerInfo, setWinnerInfo] = useState<{ cartelaNumber: number; pattern: string } | null>(null);
 
   // CSV Import mutation
   const csvImportMutation = useMutation({
@@ -816,9 +819,6 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     const newCalledNumbers = [...calledNumbersRef.current, newNumber];
     setCalledNumbers(prev => [...prev, newNumber]);
     
-    console.log(`Called number: ${newNumber}, Total called: ${newCalledNumbers.length}`, newCalledNumbers);
-
-    
     // Save to backend if there's an active game
     if ((activeGame as any)?.id) {
       updateCalledNumbersMutation.mutate({
@@ -917,7 +917,15 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
 
   const handleCheckCard = async () => {
-    console.log('handleCheckCard called, checkCardInput:', checkCardInput);
+    console.log('handleCheckCard called, checkCardInput:', checkCardInput, 'gameState:', gameState);
+    
+    // Pause the game when checking card
+    if (isAutoCalling) {
+      setWasAutoCalling(true);
+      stopAutoCalling();
+    } else {
+      setWasAutoCalling(false);
+    }
     
     if (!checkCardInput) {
       toast({
@@ -980,18 +988,30 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     console.log('Winner check result:', result);
     
     // Set the checked card result to display
-    setCheckedCardResult({
+    const resultData = {
       cartelaNumber,
       isWinner: result.isWinner,
       pattern: result.pattern,
       cardNumbers
-    });
+    };
+    console.log('Setting checkedCardResult to:', resultData);
+    setCheckedCardResult(resultData);
     
     // Force re-render
     forceUpdate({});
     
     // Play appropriate audio immediately (non-blocking)
     if (result.isWinner) {
+      // Trigger celebration for winners
+      setWinnerInfo({ cartelaNumber, pattern: result.pattern || 'Unknown Pattern' });
+      setShowCelebration(true);
+      
+      // Hide celebration after 5 seconds
+      setTimeout(() => {
+        setShowCelebration(false);
+        setWinnerInfo(null);
+      }, 5000);
+      
       customBingoVoice.announceWinner(cartelaNumber, true).catch(error => {
         console.warn('Error playing winner audio:', error);
       });
@@ -1019,10 +1039,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     });
     
     setGameState('PLAYING');
-    toast({
-      title: "Game Started",
-      description: `Playing with ${selectedCards.size} cards`
-    });
+    // Game started toast removed as requested
   };
 
   // Render card grid for preview
@@ -1179,6 +1196,52 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     return { isWinner: false };
   };
 
+  // Celebration Component
+  const Celebration = () => {
+    if (!showCelebration) return null;
+
+    return (
+      <div className="fixed inset-0 pointer-events-none z-50">
+        {/* Confetti/Flares Animation */}
+        {[...Array(20)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute animate-bounce"
+            style={{
+              left: `${Math.random() * 100}%`,
+              top: `${Math.random() * 100}%`,
+              animationDelay: `${Math.random() * 2}s`,
+              animationDuration: `${2 + Math.random() * 2}s`
+            }}
+          >
+            <div className={`text-4xl ${i % 3 === 0 ? 'text-yellow-400' : i % 3 === 1 ? 'text-red-500' : 'text-blue-500'}`}>
+              {i % 4 === 0 ? '✨' : i % 4 === 1 ? '🎉' : i % 4 === 2 ? '🌟' : '🎊'}
+            </div>
+          </div>
+        ))}
+        
+        {/* Winner Message */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white px-8 py-6 rounded-2xl shadow-2xl animate-pulse">
+            <div className="text-center">
+              <div className="text-3xl font-bold mb-2 flex items-center justify-center gap-2">
+                <Sparkles className="w-8 h-8" />
+                WINNER!
+                <Sparkles className="w-8 h-8" />
+              </div>
+              <div className="text-xl">
+                Card #{winnerInfo?.cartelaNumber}
+              </div>
+              <div className="text-lg mt-1">
+                {winnerInfo?.pattern}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Render bingo card component
   const renderBingoCard = (cardNum: number, isSelected: boolean) => {
     const cardNumbers = generateCardNumbers(cardNum);
@@ -1250,6 +1313,8 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-white">
+      {/* Celebration Component */}
+      <Celebration />
       {/* Game Setting Overlay */}
       {gameState === 'SETTING' && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
@@ -2116,34 +2181,37 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
               Check
             </Button>
           </div>
+        </div>
+      )}
 
-          {/* Checked Card Result Display */}
-          {checkedCardResult && (
-            <div className={`mt-4 ${checkedCardResult.cardNumbers.length === 0 ? 'bg-red-600 rounded-lg p-3' : 'bg-gray-800 rounded-lg p-4 border-2 border-yellow-500'}`}>
+      {/* Checked Card Result Display - Centered overlay */}
+      {gameState === 'PLAYING' && checkedCardResult && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-30 p-4">
+          <div className="bg-gray-800 rounded-xl p-6 border-2 border-yellow-500 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
               {checkedCardResult.cardNumbers.length === 0 ? (
                 // Not registered message - small popup above check button
                 <div className="flex items-center justify-between">
                   <span className="text-white font-bold">
                     Card #{checkedCardResult.cartelaNumber} Not Registered
                   </span>
-                  <Button
-                    onClick={() => setCheckedCardResult(null)}
-                    variant="ghost"
-                    size="sm"
-                    className="text-white hover:bg-red-700"
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
-              ) : (
-                // Registered card - show full card layout
-                <>
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-bold text-white">
-                      Card #{checkedCardResult.cartelaNumber} - {checkedCardResult.isWinner ? '🎉 WINNER! 🎉' : 'NOT A WINNER'}
-                    </h3>
+                  <div className="flex gap-2">
+                    {wasAutoCalling && (
+                      <Button
+                        onClick={() => {
+                          setCheckedCardResult(null);
+                          setWasAutoCalling(false);
+                          startAutoCalling();
+                        }}
+                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-sm"
+                      >
+                        Resume Game
+                      </Button>
+                    )}
                     <Button
-                      onClick={() => setCheckedCardResult(null)}
+                      onClick={() => {
+                        setCheckedCardResult(null);
+                        setWasAutoCalling(false);
+                      }}
                       variant="ghost"
                       size="sm"
                       className="text-white hover:bg-gray-700"
@@ -2151,21 +2219,55 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                       <X className="w-4 h-4" />
                     </Button>
                   </div>
+                </div>
+              ) : (
+                // Registered card - show full card layout
+                <>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className={`text-lg font-bold ${checkedCardResult.isWinner ? 'text-yellow-400 animate-pulse' : 'text-white'}`}>
+                      Card #{checkedCardResult.cartelaNumber} - {checkedCardResult.isWinner ? '🎉 WINNER! 🎉' : 'NOT A WINNER'}
+                    </h3>
+                    <div className="flex gap-2">
+                      {wasAutoCalling && (
+                        <Button
+                          onClick={() => {
+                            setCheckedCardResult(null);
+                            setWasAutoCalling(false);
+                            startAutoCalling();
+                          }}
+                          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-sm"
+                        >
+                          Resume Game
+                        </Button>
+                      )}
+                      <Button
+                        onClick={() => {
+                          setCheckedCardResult(null);
+                          setWasAutoCalling(false);
+                        }}
+                        variant="ghost"
+                        size="sm"
+                        className="text-white hover:bg-gray-700"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
                   
-                  {/* Card Layout */}
+                  {/* Card Layout - Bigger */}
                   <div className="border-2 rounded-lg overflow-hidden">
                     {/* BINGO Header */}
                     <div className="grid grid-cols-5 gap-1 bg-gray-700">
                       {['B', 'I', 'N', 'G', 'O'].map((letter) => (
                         <div 
                           key={letter} 
-                          className={`text-center py-2 font-bold text-white ${getLetterColor(letter)}`}
+                          className={`text-center py-3 font-bold text-white text-lg ${getLetterColor(letter)}`}
                         >
                           {letter}
                         </div>
                       ))}
                     </div>
-                    {/* Card Numbers */}
+                    {/* Card Numbers - Bigger cells */}
                     {checkedCardResult.cardNumbers.map((row, rowIndex) => (
                       <div key={rowIndex} className="grid grid-cols-5 gap-1">
                         {row.map((num, colIndex) => {
@@ -2176,10 +2278,10 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                           return (
                             <div 
                               key={colIndex}
-                              className={`h-10 flex items-center justify-center text-sm font-medium border ${
+                              className={`h-14 flex items-center justify-center text-lg font-bold border transition-all duration-300 ${
                                 isCalled 
-                                  ? 'bg-yellow-400 text-black' 
-                                  : 'bg-white text-black'
+                                  ? 'bg-yellow-400 text-black scale-95 shadow-inner' 
+                                  : 'bg-white text-black hover:bg-gray-100'
                               } ${isFreeSpace ? 'bg-blue-100' : ''}`}
                             >
                               {isFreeSpace ? '★' : displayNum}
@@ -2191,16 +2293,17 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                   </div>
                   
                   {checkedCardResult.pattern && (
-                    <p className="text-yellow-400 mt-2 text-center font-bold">
-                      Pattern: {checkedCardResult.pattern}
-                    </p>
+                    <div className="mt-3 text-center">
+                      <p className="text-yellow-400 font-bold text-lg animate-pulse">
+                        🏆 Pattern: {checkedCardResult.pattern} 🏆
+                      </p>
+                    </div>
                   )}
                 </>
               )}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
 
       {/* New Game Confirmation Dialog */}
       {showNewGameConfirm && (

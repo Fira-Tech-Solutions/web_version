@@ -350,6 +350,14 @@ export default function EmployeeBingoDashboard({ onLogout }: EmployeeBingoDashbo
       setShowWinnerResult(true);
       setShowWinnerChecker(false);
       
+      // Add delay between dialogs to prevent Radix UI blocking
+      setTimeout(() => {
+        setShowWinnerChecker(false);
+        setTimeout(() => {
+          setShowWinnerResult(true);
+        }, 100);
+      }, 100);
+      
       if (result.isWinner) {
         setGameActive(false);
         setGameFinished(true);
@@ -388,6 +396,14 @@ export default function EmployeeBingoDashboard({ onLogout }: EmployeeBingoDashbo
       
       setShowWinnerResult(true);
       setShowWinnerChecker(false);
+      
+      // Add delay between dialogs to prevent Radix UI blocking
+      setTimeout(() => {
+        setShowWinnerChecker(false);
+        setTimeout(() => {
+          setShowWinnerResult(true);
+        }, 100);
+      }, 100);
       
       toast({
         title: "Warning",
@@ -932,7 +948,7 @@ export default function EmployeeBingoDashboard({ onLogout }: EmployeeBingoDashbo
                       <div className="text-center font-bold text-sm bg-green-100 p-2 rounded">O</div>
                       
                       {/* Cartela pattern */}
-                      {(winnerResult.cartelaPattern || getFixedCartelaPattern(winnerResult.cartela)).flat().map((num, index) => {
+                      {(winnerResult.cartelaPattern || getFixedCartelaPattern(winnerResult?.cartela) || [])?.flat().map((num, index) => {
                         const isWinningCell = winnerResult.winningCells?.includes(index);
                         const isCalled = num !== 0 && calledNumbers.includes(num);
                         const isFree = index === 12;
@@ -967,19 +983,23 @@ export default function EmployeeBingoDashboard({ onLogout }: EmployeeBingoDashbo
                 </div>
 
                 {/* Visual Cartela Grid for Non-Winner */}
-                <div className="bg-white p-4 rounded-lg border">
-                  <div className="text-center mb-4">
-                    <div className="text-md font-medium text-red-700 mb-2">Cartela Grid:</div>
-                    <div className="grid grid-cols-5 gap-2 max-w-sm mx-auto">
-                      {/* Header */}
-                      <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">B</div>
-                      <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">I</div>
+                {winnerResult && (
+                  <div className="bg-white p-4 rounded-lg border">
+                    <div className="text-center mb-4">
+                      <div className="text-md font-medium text-red-700 mb-2">Cartela Grid:</div>
+                      <div className="grid grid-cols-5 gap-2 max-w-sm mx-auto">
+                        {/* Header */}
+                        <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">B</div>
+                        <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">I</div>
+                        <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">N</div>
+                        <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">G</div>
+                        <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">O</div>
                       <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">N</div>
                       <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">G</div>
                       <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">O</div>
                       
                       {/* Cartela pattern */}
-                      {getFixedCartelaPattern(winnerResult.cartela).flat().map((num, index) => {
+                      {(getFixedCartelaPattern(winnerResult?.cartela) || [])?.flat().map((num, index) => {
                         const isCalled = num !== 0 && calledNumbers.includes(num);
                         const isFree = index === 12;
                         
