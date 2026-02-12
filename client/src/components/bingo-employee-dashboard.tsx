@@ -26,14 +26,13 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const [gameState, setGameState] = useState<GameState>('SETTING');
   const [calledNumbers, setCalledNumbers] = useState<number[]>([]);
   const [currentNumber, setCurrentNumber] = useState<number | null>(null);
-  const [speed, setSpeed] = useState(4);
+  const [speed, setSpeed] = useState(7);
   const [isAutoPlay, setIsAutoPlay] = useState(false);
   const [checkCardInput, setCheckCardInput] = useState("");
   const [wasAutoCalling, setWasAutoCalling] = useState(false);
   const [isManual, setIsManual] = useState(false);
   const [selectedCards, setSelectedCards] = useState<Set<number>>(new Set());
   const [topUpFee, setTopUpFee] = useState("10");
-  const [gameMode, setGameMode] = useState("Bereket");
   const [rechargeFile, setRechargeFile] = useState<File | null>(null);
   const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
   const [expandedCard, setExpandedCard] = useState<number | null>(null);
@@ -781,7 +780,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
     switch (letter) {
       case "B": return "bg-blue-900 text-white"; // Navy
       case "I": return "bg-red-600 text-white"; // Red
-      case "N": return "bg-white text-black"; // White
+      case "N": return "bg-gray-400 text-black"; // Gray with black text
       case "G": return "bg-green-600 text-white"; // Green
       case "O": return "bg-yellow-400 text-black"; // Yellow
       default: return "bg-gray-600 text-white";
@@ -792,10 +791,10 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const getBallGradient = (num: number): string => {
     if (num >= 1 && num <= 15) return "from-blue-500 to-blue-700";
     if (num >= 16 && num <= 30) return "from-red-500 to-red-700";
-    if (num >= 31 && num <= 45) return "from-white to-gray-200";
+    if (num >= 31 && num <= 45) return "from-white to-gray-200"; // White background for N column in game floor
     if (num >= 46 && num <= 60) return "from-green-500 to-green-700";
     if (num >= 61 && num <= 75) return "from-yellow-500 to-yellow-700";
-    return "from-gray-500 to-gray-700";
+    return "from-gray-600 to-gray-800";
   };
 
   // Call number handler with voice synthesis
@@ -2024,10 +2023,17 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                 <div className="text-center">
                   {currentNumber && (
                     <>
-                      <div className="text-4xl font-bold text-white">
+                      <div className={`text-4xl font-bold ${(currentNumber >= 31 && currentNumber <= 45) || (currentNumber >= 61 && currentNumber <= 75)
+                        ? 'text-black'
+                        : 'text-white'}
+                      `}>
+
                         {currentNumber}
                       </div>
-                      <div className="text-xl font-bold text-white mt-1">
+                      <div className={`text-xl font-bold mt-1 ${(currentNumber >= 31 && currentNumber <= 45) || (currentNumber >= 61 && currentNumber <= 75)
+                        ? 'text-black'
+                        : 'text-white'}
+                      `}>
                         {getLetterForNumber(currentNumber)}
                       </div>
                     </>
@@ -2091,7 +2097,12 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                         }}
                       >
                         {num !== undefined ? (
-                          <span className="text-white font-bold text-xl">{num}</span>
+                          <span className={`font-bold text-xl ${(num >= 31 && num <= 45) || (num >= 61 && num <= 75)
+                            ? 'text-black'
+                            : 'text-white'}
+                          `}>
+                            {num}
+                          </span>
                         ) : (
                           <span className="text-gray-500 font-bold text-2xl">?</span>
                         )}
@@ -2124,9 +2135,9 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
             {/* Prize Section */}
             <div className="bg-blue-900 rounded-lg p-2 text-center">
-              <div className="text-6xl font-bold mb-2">ደረሻ</div>
+              <div className="text-6xl font-bold mb-2">ደራሽ</div>
               <div className="bg-blue-700 rounded-lg p-4">
-                <div className="text-5xl font-bold text-yellow-400">10</div>
+                <div className="text-5xl font-bold text-yellow-400">{topUpFee}</div>
                 <div className="text-2xl">ብር</div>
               </div>
             </div>
@@ -2146,7 +2157,9 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                     <div
                       key={num}
                       className={`h-16 rounded text-xl font-bold flex items-center justify-center ${isCalled
-                        ? `bg-gradient-to-br ${getBallGradient(num)} text-white shadow-lg`
+                        ? `bg-gradient-to-br ${getBallGradient(num)} shadow-lg ${(num >= 31 && num <= 45) || (num >= 61 && num <= 75)
+                            ? 'text-black'
+                            : 'text-white'}`
                         : 'bg-gray-700 text-gray-300'
                         }`}
                     >
@@ -2183,17 +2196,6 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
               {isShuffling ? 'Shuffling...' : 'Bowzew'}
             </Button>
 
-            <Select value={gameMode} onValueChange={setGameMode}>
-              <SelectTrigger className="w-40 bg-white text-black">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Bereket">Bereket</SelectItem>
-                <SelectItem value="Standard">Standard</SelectItem>
-                <SelectItem value="Quick">Quick</SelectItem>
-              </SelectContent>
-            </Select>
-
             <Select value={selectedVoice} onValueChange={(voice) => {
               setSelectedVoice(voice);
               const voices = customBingoVoice.getAvailableVoices();
@@ -2228,7 +2230,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
             <Input
               type="text"
-              placeholder="Enter Card Num"
+              placeholder="Enter Card Number"
               value={checkCardInput}
               onChange={(e) => setCheckCardInput(e.target.value)}
               className="w-48 bg-white text-black"
@@ -2335,13 +2337,26 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                           const isCalled = num < 0;
                           const displayNum = Math.abs(num);
                           const isFreeSpace = num === 0;
+                          const letter = ['B', 'I', 'N', 'G', 'O'][colIndex];
+                          
+                          // Get appropriate colors for called numbers based on column
+                          const getCalledNumberColors = (letter: string) => {
+                            switch (letter) {
+                              case "B": return 'bg-blue-900 text-white';
+                              case "I": return 'bg-red-600 text-white';
+                              case "N": return 'bg-gray-400 text-white'; // Dark background with white text for visibility
+                              case "G": return 'bg-green-600 text-white';
+                              case "O": return 'bg-yellow-500 text-black';
+                              default: return 'bg-yellow-400 text-black';
+                            }
+                          };
                           
                           return (
                             <div 
                               key={colIndex}
                               className={`h-14 flex items-center justify-center text-lg font-bold border transition-all duration-300 ${
                                 isCalled 
-                                  ? 'bg-yellow-400 text-black scale-95 shadow-inner' 
+                                  ? getCalledNumberColors(letter)
                                   : 'bg-white text-black hover:bg-gray-100'
                               } ${isFreeSpace ? 'bg-blue-100' : ''}`}
                             >
