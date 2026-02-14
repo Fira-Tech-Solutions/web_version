@@ -2044,31 +2044,21 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
             {/* 5x5 Pattern Preview */}
             <div className="bg-gray-800 rounded-lg p-2">
-              <div className="grid grid-cols-5 gap-2 mb-2">
-                <div className="font-bold text-blue-900">B</div>
-                <div className="font-bold text-blue-900">I</div>
-                <div className="font-bold text-blue-900">N</div>
-                <div className="font-bold text-blue-900">G</div>
-                <div className="font-bold text-blue-900">O</div>
+              <div className="relative w-full h-full group">
+                <img 
+                  src="/bingo_hd.jpg" 
+                  alt="Bingo Card Pattern" 
+                  className="w-full h-full object-contain rounded-lg shadow-2xl transition-transform duration-300 group-hover:scale-105 border-2 border-yellow-500/50"
+                />
+                {/* Overlay effect */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent rounded-lg pointer-events-none" />
+                {/* Shine effect */}
+                <div className="absolute inset-0 rounded-lg pointer-events-none">
+                  <div className="absolute top-1 left-1 right-1 h-px bg-gradient-to-r from-transparent via-yellow-400 to-transparent opacity-60" />
+                  <div className="absolute top-1 left-1 bottom-1 w-px bg-gradient-to-b from-transparent via-yellow-400 to-transparent opacity-60" />
+                </div>
               </div>
-              <div className="grid grid-cols-5 gap-2 text-sm">
-                {[15, 16, 39, 59, 66].map((n, i) => (
-                  <div key={i} className="bg-white border-2 border-blue-900 rounded p-2 font-bold text-blue-900">
-                    {n}
-                  </div>
-                ))}
-                {[11, 28, 40, 51, 68].map((n, i) => (
-                  <div key={i} className="bg-white border-2 border-blue-900 rounded p-2 font-bold text-blue-900">
-                    {n}
-                  </div>
-                ))}
-                {[12, 20].map((n, i) => (
-                  <div key={i} className="bg-white border-2 border-blue-900 rounded p-2 font-bold text-blue-900">
-                    {n}
-                  </div>
-                ))}
               </div>
-            </div>
 
             {/* Recent 5 Numbers */}
             <div className="bg-blue-900 rounded-lg p-2">
@@ -2373,6 +2363,42 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                       <p className="text-yellow-400 font-bold text-lg animate-pulse">
                         🏆 Pattern: {checkedCardResult.pattern} 🏆
                       </p>
+                    </div>
+                  )}
+                  
+                  {/* Winner Action Buttons */}
+                  {checkedCardResult.isWinner && (
+                    <div className="mt-6 flex gap-4 justify-center">
+                      <Button
+                        onClick={() => {
+                          // Stop auto-calling
+                          stopAutoCalling();
+                          // Reset game state
+                          setCalledNumbers([]);
+                          setCurrentNumber(null);
+                          setGameState('SETTING');
+                          setCheckedCardResult(null);
+                          setWasAutoCalling(false);
+                        }}
+                        className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 font-bold"
+                      >
+                        New Game
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          // Stop auto-calling
+                          stopAutoCalling();
+                          // Reset game state
+                          setCalledNumbers([]);
+                          setCurrentNumber(null);
+                          setGameState('SETTING');
+                          setCheckedCardResult(null);
+                          setWasAutoCalling(false);
+                        }}
+                        className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 font-bold"
+                      >
+                        Quit Game
+                      </Button>
                     </div>
                   )}
                 </>
