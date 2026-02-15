@@ -51,6 +51,15 @@ export interface IStorage {
     gamesCompleted: number;
     playersRegistered: number;
   }>;
+  
+  // Financial methods
+  processGameProfits(gameId: number, totalCollected: string): Promise<void>;
+  
+  // Cartela shop methods
+  getCartelasByShop(shopId: number): Promise<Cartela[]>;
+  resetCartelasForShop(shopId: number): Promise<void>;
+  getShop(shopId: number): Promise<any>;
+  getUserByShopId(shopId: number): Promise<any>;
   createOrUpdateDailyRevenueSummary(summary: any): Promise<DailyRevenueSummary>;
   getDailyRevenueSummary(date: string): Promise<DailyRevenueSummary | undefined>;
   getDailyRevenueSummaries(dateFrom?: string, dateTo?: string): Promise<DailyRevenueSummary[]>;
@@ -107,6 +116,15 @@ export class DatabaseStorage implements IStorage {
 
   async getUsers(): Promise<User[]> {
     return await db.select().from(users);
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
+  }
+
+  async getAllTransactions(): Promise<any[]> {
+    return await db.select().from(transactions);
   }
 
   async generateAccountNumber(): Promise<string> {
@@ -332,6 +350,93 @@ export class DatabaseStorage implements IStorage {
       gamesCompleted: gameStats[0]?.gamesCompleted || 0,
       playersRegistered: playerStats[0]?.playersRegistered || 0
     };
+  }
+
+  // Financial methods - Implement 15% System Cut
+  async processGameProfits(gameId: number, totalCollected: string): Promise<void> {
+    const game = await this.getGame(gameId);
+    if (!game) {
+      throw new Error(`Game ${gameId} not found`);
+    }
+
+    const employee = await this.getUser(game.employeeId);
+    if (!employee) {
+      throw new Error(`Employee ${game.employeeId} not found`);
+    }
+
+    const totalCollectedNum = parseFloat(totalCollected);
+    if (totalCollectedNum <= 0) {
+      console.log(`No revenue to process for game ${gameId}`);
+      return;
+    }
+
+    // Calculate 15% system cut
+    const systemCut = totalCollectedNum * 0.15;
+    const remainingAmount = totalCollectedNum - systemCut;
+
+    console.log(`💰 Processing game profits for game ${gameId}:`, {
+      totalCollected: totalCollectedNum,
+      systemCut: systemCut,
+      remainingAmount: remainingAmount,
+      employeeBalance: parseFloat(employee.balance || "0")
+    });
+
+    // Check if employee has sufficient balance to cover the system cut
+    const currentBalance = parseFloat(employee.balance || "0");
+    if (currentBalance < systemCut) {
+      throw new Error(`Insufficient balance to cover 15% system cut. Required: ${systemCut.toFixed(2)} ETB, Available: ${currentBalance.toFixed(2)} ETB. Please recharge to continue.`);
+    }
+
+    // Deduct system cut from employee balance
+    const newBalance = currentBalance - systemCut;
+    await this.updateUserBalance(employee.id, newBalance.toString());
+
+    // Create transaction record for system cut
+    await this.createTransaction({
+      gameId: gameId,
+      employeeId: employee.id,
+      shopId: employee.shopId,
+      amount: systemCut.toString(),
+      type: 'system_cut',
+      description: `15% system cut from game revenue (${systemCut.toFixed(2)} ETB)`,
+    });
+
+    // Create transaction record for remaining revenue (goes to shop)
+    await this.createTransaction({
+      gameId: gameId,
+      employeeId: employee.id,
+      shopId: employee.shopId,
+      amount: remainingAmount.toString(),
+      type: 'game_revenue',
+      description: `Game revenue after system cut (${remainingAmount.toFixed(2)} ETB)`,
+    });
+
+    console.log(`✅ Processed game profits for game ${gameId}: System cut ${systemCut.toFixed(2)} ETB deducted, remaining ${remainingAmount.toFixed(2)} ETB recorded as revenue`);
+  }
+
+  // Cartela shop methods
+  async getCartelasByShop(shopId: number): Promise<Cartela[]> {
+    return await db.select().from(cartelas)
+      .where(eq(cartelas.shopId, shopId))
+      .orderBy(cartelas.cartelaNumber);
+  }
+
+  async resetCartelasForShop(shopId: number): Promise<void> {
+    await db.update(cartelas)
+      .set({ bookedBy: null, bookedAt: null })
+      .where(eq(cartelas.shopId, shopId));
+  }
+
+  async getShop(shopId: number): Promise<any> {
+    // This would need to be implemented based on your shop schema
+    // For now, return a basic shop structure
+    return { id: shopId, name: `Shop ${shopId}`, profitMargin: '20' };
+  }
+
+  async getUserByShopId(shopId: number): Promise<any> {
+    const [user] = await db.select().from(users)
+      .where(and(eq(users.shopId, shopId), eq(users.role, 'admin')));
+    return user || null;
   }
 
   async createOrUpdateDailyRevenueSummary(summary: any): Promise<DailyRevenueSummary> {

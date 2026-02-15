@@ -49,6 +49,16 @@ function initTables(database: Database.Database) {
       employee_id INTEGER,
       redeemed_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS used_recharges (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_signature TEXT NOT NULL UNIQUE,
+      transaction_id TEXT NOT NULL,
+      amount REAL NOT NULL,
+      employee_id INTEGER,
+      machine_id TEXT NOT NULL,
+      used_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 }
 
@@ -107,4 +117,22 @@ export function getTotalRecharged(employeeId?: number): number {
     ).get() as { total: number } | undefined;
   }
   return row?.total ?? 0;
+}
+
+export function isRechargeUsed(fileSignature: string): boolean {
+  const database = getLicenseDb();
+  const row = database.prepare("SELECT 1 FROM used_recharges WHERE file_signature = ?").get(fileSignature);
+  return !!row;
+}
+
+export function recordUsedRecharge(fileSignature: string, transactionId: string, amount: number, employeeId?: number, machineId?: string): void {
+  const database = getLicenseDb();
+  database.prepare(
+    "INSERT INTO used_recharges (file_signature, transaction_id, amount, employee_id, machine_id, used_at) VALUES (?, ?, ?, ?, ?, datetime('now'))"
+  ).run(fileSignature, transactionId, amount, employeeId ?? null, machineId ?? '');
+}
+
+export function generateFileSignature(fileData: string): string {
+  const crypto = require('crypto');
+  return crypto.createHash('sha256').update(fileData).digest('hex');
 }

@@ -12,6 +12,9 @@ import {
   isTokenUsed,
   recordToken,
   getTotalRecharged,
+  isRechargeUsed,
+  recordUsedRecharge,
+  generateFileSignature,
 } from "../db/license-db";
 import { decryptData, verifyBalance } from "../lib/crypto";
 import { storage } from "../storage";
@@ -212,11 +215,23 @@ const topupHandler = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "This recharge file has already been used" });
     }
 
+    // Enhanced one-time recharge enforcement using file signature
+    const fileSignature = generateFileSignature(encryptedData);
+    if (isRechargeUsed(fileSignature)) {
+      return res.status(400).json({ message: "This recharge file has already been used on this or any other device" });
+    }
+
+    // Get current machine ID for tracking
+    const currentMachineId = getHardwareId();
+
     // Add to balance and record
     const currentBalance = parseFloat(user.balance?.toString() || "0");
     const newBalance = (currentBalance + amountNum).toFixed(2);
     await storage.updateUserBalance(user.id, newBalance);
     recordToken(transactionID, amountNum, user.id);
+    
+    // Record file usage to prevent reuse
+    recordUsedRecharge(fileSignature, transactionID, amountNum, user.id, currentMachineId);
 
     res.json({
       success: true,

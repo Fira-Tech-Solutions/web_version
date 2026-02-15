@@ -7,9 +7,8 @@ import { Toaster } from "./components/ui/toaster";
 import LoginPage from "./pages/login-page";
 import RegistrationPage from "./pages/registration-page";
 import TestLogin from "./pages/test-login";
-import SimpleAdminDashboard from "./pages/simple-admin-dashboard";
+import SecureAdminDashboard from "./pages/secure-admin-dashboard";
 import EmployeeDashboard from "./pages/employee-dashboard";
-import AdminEmployeeManagement from "./pages/admin-employee-management";
 
 function AppRouter() {
   const { user } = useAuth();
@@ -39,10 +38,7 @@ function AppRouter() {
 
         {/* Dashboard Routes */}
         <Route path="/dashboard/admin">
-          <SimpleAdminDashboard onLogout={handleLogout} />
-        </Route>
-        <Route path="/dashboard/admin/employees">
-          <AdminEmployeeManagement />
+          <SecureAdminDashboard onLogout={handleLogout} />
         </Route>
         <Route path="/dashboard/employee">
           <EmployeeDashboard onLogout={handleLogout} />
@@ -50,7 +46,7 @@ function AppRouter() {
 
         {/* Legacy Routes for backward compatibility */}
         <Route path="/admin">
-          <SimpleAdminDashboard onLogout={handleLogout} />
+          <SecureAdminDashboard onLogout={handleLogout} />
         </Route>
         <Route path="/employee">
           <EmployeeDashboard onLogout={handleLogout} />

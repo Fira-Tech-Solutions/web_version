@@ -93,11 +93,11 @@ export function AuthProvider(props: { children: ReactNode }) {
   };
 
   // Debug authentication state
-  useEffect(() => {
-    if (userData) {
-      console.log('Auth state updated:', (userData as any)?.user);
-    }
-  }, [userData]);
+  // useEffect(() => {
+  //   if (userData) {
+  //     console.log('Auth state updated:', (userData as any)?.user);
+  //   }
+  // }, [userData]);
 
   return createElement(AuthContext.Provider, { value }, props.children);
 }

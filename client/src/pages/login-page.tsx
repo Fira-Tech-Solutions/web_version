@@ -62,10 +62,23 @@ export default function LoginPage() {
       return response.json();
     },
     onSuccess: (data: any) => {
-      toast({
-        title: "Registration successful",
-        description: `Your account for ${data.username} has been created. You can now login.`,
-      });
+      if (data.autoLogin) {
+        // Auto-login user after successful registration
+        toast({
+          title: "Registration & Login Successful",
+          description: `Welcome ${data.username}! You have been automatically logged in.`,
+        });
+        // Update auth state with user data
+        login(data.user);
+        // Redirect to employee dashboard
+        window.location.href = '/employee-dashboard';
+      } else {
+        // Regular registration success
+        toast({
+          title: "Registration successful",
+          description: `Your account for ${data.username} has been created. You can now login.`,
+        });
+      }
     },
     onError: (error: any) => {
       toast({

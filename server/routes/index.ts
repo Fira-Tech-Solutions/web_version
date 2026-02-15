@@ -10,8 +10,17 @@ import { insertUserSchema, insertGameSchema, insertGamePlayerSchema, insertTrans
 import { z } from "zod";
 import { getFixedCartelaPattern as getFixedPattern, getCartelaNumbers } from "../lib/fixed-cartelas";
 import { encryptData, decryptData, signBalance, verifyBalance, generateKeyPair } from "../lib/crypto";
+import { 
+  isActivated,
+  setActivation,
+  isTokenUsed,
+  recordToken,
+  getTotalRecharged,
+  isRechargeUsed,
+  recordUsedRecharge,
+  generateFileSignature
+} from "../db/license-db";
 
-// For balance recharge, we'll use a system-wide key pair for this demo.
 const { privateKey: SYSTEM_PRIVATE_KEY, publicKey: SYSTEM_PUBLIC_KEY } = generateKeyPair();
 
 // Extend Express Request to include session
@@ -171,13 +180,30 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
         return res.status(400).json({ message: "Username and password required" });
       }
 
+      console.log(`Login attempt for username: ${username}, password: ${password}`);
+
       const user = await storage.getUserByUsername(username);
       if (!user) {
+        console.log(`User not found: ${username}`);
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
-      const isValidPassword = await bcrypt.compare(password, user.password);
+      console.log(`Found user:`, { username: user.username, password: user.password, role: user.role });
+
+      // Check if password is hashed (starts with $2b$) or plain text
+      const isHashedPassword = user.password.startsWith('$2b$');
+      let isValidPassword = false;
+      
+      if (isHashedPassword) {
+        // Compare with bcrypt for hashed passwords (existing admin users)
+        isValidPassword = await bcrypt.compare(password, user.password);
+      } else {
+        // Plain text comparison for new users
+        isValidPassword = password === user.password;
+      }
+      
       if (!isValidPassword) {
+        console.log(`Password mismatch: provided=${password}, stored=${user.password}, isHashed=${isHashedPassword}`);
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
@@ -235,48 +261,33 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
         username: userData.username,
         password: userData.password,
         role: 'employee',
-        name: userData.name,
+        name: userData.fullName || userData.name, // Use fullName from account file, fallback to name
         shopId: userData.shopId,
         accountNumber: userData.accountNumber,
-        balance: "0.00",
+        balance: userData.initialBalance || "0.00", // Use initialBalance from account file
         isBlocked: false
       });
 
-      res.json({ message: "Registration successful", username: newUser.username });
+      // Auto-login the user after successful registration
+      req.session.userId = newUser.id;
+      req.session.user = newUser;
+
+      // Ensure session is saved before sending response
+      await new Promise((resolve) => {
+        req.session.save((err) => {
+          resolve();
+        });
+      });
+
+      res.json({ 
+        message: "Registration successful", 
+        username: newUser.username,
+        user: newUser, // Include user data for auto-login
+        autoLogin: true // Indicate auto-login occurred
+      });
     } catch (error) {
       console.error("File registration error:", error);
       res.status(500).json({ message: "Failed to process registration file" });
-    }
-  });
-
-  app.post("/api/admin/employees/generate-account-file", async (req, res) => {
-    try {
-      const user = req.session.user;
-      if (!user || user.role !== 'admin') {
-        return res.status(403).json({ message: "Admin access required" });
-      }
-
-      const { username, password, name } = req.body;
-      if (!username || !password || !name) {
-        return res.status(400).json({ message: "Missing required fields" });
-      }
-
-      const hashedPassword = await bcrypt.hash(password, 10);
-      const accountNumber = await storage.generateAccountNumber();
-
-      const accountData = {
-        username,
-        password: hashedPassword,
-        name,
-        accountNumber,
-        generatedAt: new Date().toISOString()
-      };
-
-      const encryptedData = encryptData(accountData);
-      res.json({ encryptedData, filename: `account_${username}.bin` });
-    } catch (error) {
-      console.error("Account file generation error:", error);
-      res.status(500).json({ message: "Failed to generate account file" });
     }
   });
 
@@ -288,26 +299,87 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { employeeAccountNumber, amount } = req.body;
+      const { employeeAccountNumber, amount, machineId, privateKey } = req.body;
       if (!employeeAccountNumber || !amount) {
         return res.status(400).json({ message: "Employee account number and amount required" });
       }
 
+      // Use provided private key or fall back to system key
+      const signingKey = privateKey || SYSTEM_PRIVATE_KEY;
+      
       const payload = {
         employeeAccountNumber,
         amount,
         shopId: user.shopId,
         timestamp: new Date().getTime(),
-        nonce: Math.random().toString(36).substring(7)
+        nonce: Math.random().toString(36).substring(7),
+        machineId: machineId || null // Include machine ID if provided
       };
 
-      const signature = signBalance(payload, SYSTEM_PRIVATE_KEY);
+      const signature = signBalance(payload, signingKey);
       const fileData = encryptData({ payload, signature });
 
-      res.json({ fileData, filename: `recharge_${amount}.bin` });
+      res.json({ fileData, filename: `recharge_${amount}.enc` });
     } catch (error) {
       console.error("Recharge file generation error:", error);
       res.status(500).json({ message: "Failed to generate recharge file" });
+    }
+  });
+
+  app.post("/api/admin/employees/generate-account-file", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { fullName, username, password, initialBalance, privateKey } = req.body;
+      if (!fullName || !username || !password) {
+        return res.status(400).json({ message: "Full name, username, and password required" });
+      }
+
+      // Use provided private key or fall back to system key
+      const signingKey = privateKey || SYSTEM_PRIVATE_KEY;
+
+      const accountNumber = await storage.generateAccountNumber();
+      
+      const payload = {
+        fullName,
+        username,
+        password,
+        accountNumber,
+        initialBalance: initialBalance || "0",
+        shopId: user.shopId,
+        timestamp: new Date().getTime(),
+        nonce: Math.random().toString(36).substring(7)
+      };
+
+      const signature = signBalance(payload, signingKey);
+      const encryptedData = encryptData(payload);
+
+      // Store user data in admin database for tracking
+      await storage.createUser({
+        username,
+        password, // Store as plain text for admin view
+        role: 'employee',
+        name: fullName,
+        shopId: user.shopId,
+        accountNumber,
+        balance: (parseFloat(initialBalance || "0") * 10).toString(), // Admin view balance (×10 multiplier)
+        adminGeneratedBalance: (parseFloat(initialBalance || "0") * 10).toString(), // Track admin-generated balance
+        employeePaidAmount: initialBalance || "0", // Track what employee paid
+        isBlocked: false
+      });
+
+      res.json({ encryptedData, filename: `account_${username}.enc` });
+    } catch (error) {
+      console.error("Account file generation error:", error);
+      res.status(500).json({ message: "Failed to generate account file" });
     }
   });
 
@@ -1998,7 +2070,7 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      // For admin, return all employees
+      // For admin, return all employees with full data including passwords
       let employees;
       if (user.role === 'admin') {
         const allUsers = await storage.getUsers();
@@ -2011,14 +2083,10 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
         employees = shopUsers.filter(u => u.role === 'employee');
       }
 
-      // Remove passwords from response
-      const safeEmployees = employees.map(emp => ({
-        ...emp,
-        password: undefined
-      }));
-
-      res.json(safeEmployees);
+      // Return employees with unencrypted passwords for admin management
+      res.json(employees);
     } catch (error) {
+      console.error("Error fetching employees:", error);
       res.status(500).json({ message: "Failed to get employees" });
     }
   });
@@ -3751,6 +3819,59 @@ export async function registerRoutes(app: Express): Promise<{ server: Server; ws
     } catch (error) {
       console.error('Error fetching shop stats:', error);
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get admin transactions
+  app.get("/api/transactions/admin", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      // Get all transactions for admin view
+      const transactions = await storage.getAllTransactions();
+      
+      res.json(transactions);
+    } catch (error) {
+      console.error("Error fetching admin transactions:", error);
+      res.status(500).json({ message: "Failed to get transactions" });
+    }
+  });
+
+  // Delete employee endpoint
+  app.delete("/api/admin/employees/:id", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const employeeId = parseInt(req.params.id);
+      if (isNaN(employeeId)) {
+        return res.status(400).json({ message: "Invalid employee ID" });
+      }
+
+      const deleted = await storage.deleteUser(employeeId);
+      if (deleted) {
+        res.json({ message: "Employee deleted successfully" });
+      } else {
+        res.status(404).json({ message: "Employee not found" });
+      }
+    } catch (error) {
+      console.error("Error deleting employee:", error);
+      res.status(500).json({ message: "Failed to delete employee" });
     }
   });
 

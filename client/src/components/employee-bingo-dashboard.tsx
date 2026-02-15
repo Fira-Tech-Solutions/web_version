@@ -10,6 +10,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { FIXED_CARTELAS, getCartelaNumbers, getFixedCartelaPattern } from "@/data/fixed-cartelas";
+import DeviceSettings from "./device-settings";
+import { Settings } from "lucide-react";
 
 interface EmployeeBingoDashboardProps {
   onLogout: () => void;
@@ -57,6 +59,9 @@ export default function EmployeeBingoDashboard({ onLogout }: EmployeeBingoDashbo
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
   const [nextNumber, setNextNumber] = useState<number | null>(null);
   const [isHovering, setIsHovering] = useState(false);
+  
+  // Settings modal state
+  const [showSettings, setShowSettings] = useState(false);
   
   // User balance query
   const { data: balance } = useQuery({
@@ -501,13 +506,23 @@ export default function EmployeeBingoDashboard({ onLogout }: EmployeeBingoDashbo
                 Welcome, {user?.name} | Credit: {balance?.balance || '0.00'} Birr | Shop: {shopData?.name || 'Loading...'}
               </p>
             </div>
-            <Button 
-              variant="outline" 
-              onClick={onLogout}
-              className="bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
-            >
-              Logout
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowSettings(true)}
+                className="bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100"
+                title="Device Settings"
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={onLogout}
+                className="bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
+              >
+                Logout
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -981,44 +996,22 @@ export default function EmployeeBingoDashboard({ onLogout }: EmployeeBingoDashbo
                 <div className="text-gray-600 mt-4">
                   Game continues...
                 </div>
-
-                {/* Visual Cartela Grid for Non-Winner */}
-                {winnerResult && (
-                  <div className="bg-white p-4 rounded-lg border">
-                    <div className="text-center mb-4">
-                      <div className="text-md font-medium text-red-700 mb-2">Cartela Grid:</div>
-                      <div className="grid grid-cols-5 gap-2 max-w-sm mx-auto">
-                        {/* Header */}
-                        <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">B</div>
-                        <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">I</div>
-                        <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">N</div>
-                        <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">G</div>
-                        <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">O</div>
-                      <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">N</div>
-                      <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">G</div>
-                      <div className="text-center font-bold text-sm bg-red-100 p-2 rounded">O</div>
-                      
-                      {/* Cartela pattern */}
-                      {(getFixedCartelaPattern(winnerResult?.cartela) || [])?.flat().map((num, index) => {
-                        const isCalled = num !== 0 && calledNumbers.includes(num);
-                        const isFree = index === 12;
-                        
-                        return (
-                          <div key={index} className={`text-center text-sm p-2 border-2 rounded ${
-                            isCalled || isFree
-                              ? 'bg-green-200 border-green-400 text-green-800'
-                              : 'bg-gray-50 border-gray-200 text-gray-600'
-                          }`}>
-                            {isFree ? 'FREE' : num}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
               </div>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Settings Modal */}
+      <Dialog open={showSettings} onOpenChange={setShowSettings}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Device Settings</DialogTitle>
+            <DialogDescription>
+              Manage your device licensing and hardware information
+            </DialogDescription>
+          </DialogHeader>
+          <DeviceSettings />
         </DialogContent>
       </Dialog>
     </div>
