@@ -20,6 +20,7 @@ export const users = sqliteTable("users", {
   totalRevenue: real("total_revenue").default(0), // Employee's total revenue
   totalGames: integer("total_games").default(0), // Employee's total games
   totalPlayers: integer("total_players").default(0), // Employee's total players
+  machineId: text("machine_id"), // Machine ID for employee identification
   createdAt: integer("created_at", { mode: "timestamp" }),
 });
 
@@ -49,25 +50,20 @@ export const gamePlayers = sqliteTable("game_players", {
 
 export const transactions = sqliteTable("transactions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  gameId: integer("game_id").references(() => games.id, { onDelete: "cascade" }),
-  employeeId: integer("employee_id").references(() => users.id, { onDelete: "cascade" }),
+  userId: integer("userId").references(() => users.id, { onDelete: "cascade" }),
   amount: real("amount").notNull(),
-  type: text("type").notNull(), // 'entry_fee', 'prize_payout', 'admin_profit', 'credit_load'
+  type: text("type").notNull(), // 'entry_fee', 'prize_payout', 'admin_profit', 'credit_load', 'game_fee'
   description: text("description"),
-  createdAt: integer("created_at", { mode: "timestamp" }),
+  createdAt: integer("createdAt", { mode: "timestamp" }),
 });
 
 export const gameHistory = sqliteTable("game_history", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  gameId: integer("game_id").notNull().references(() => games.id, { onDelete: "cascade" }),
-  employeeId: integer("employee_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  totalCollected: real("total_collected").notNull(),
-  prizeAmount: real("prize_amount").notNull(),
-  adminProfit: real("admin_profit").notNull(),
-  playerCount: integer("player_count").notNull(),
-  winnerName: text("winner_name"),
-  winningCartela: text("winning_cartela"),
-  completedAt: integer("completed_at", { mode: "timestamp" }),
+  gameId: integer("gameId").references(() => games.id, { onDelete: "cascade" }),
+  userId: integer("userId").references(() => users.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  details: text("details"),
+  createdAt: integer("createdAt", { mode: "timestamp" }),
 });
 
 export const cartelas = sqliteTable("cartelas", {

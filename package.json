@@ -60,6 +60,7 @@
     "express-session": "^1.18.1",
     "framer-motion": "^11.13.1",
     "input-otp": "^1.4.2",
+    "lru-cache": "^11.2.6",
     "lucide-react": "^0.453.0",
     "memoizee": "^0.4.17",
     "nanoid": "^5.1.5",

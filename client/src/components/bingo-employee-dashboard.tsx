@@ -92,8 +92,9 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       setIsImporting(false);
       
       // Show detailed import status
-      if (data.success) {
-        let message = `Successfully processed ${data.total} cartelas`;
+      // Check if import was successful (has imported field and no critical errors)
+      if (data.imported !== undefined || data.total !== undefined) {
+        let message = `Successfully processed ${data.total || 0} cartelas`;
         
         if (data.imported > 0) {
           message += ` - ${data.imported} imported/updated`;
@@ -241,17 +242,24 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
   // Handle Top Up File
   const handleTopUpFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('File input changed', e.target.files);
     const file = e.target.files?.[0];
     if (file) {
+      console.log('Processing file:', file.name, file.size);
       setRechargeFile(file);
       processTopUpFile(file);
+    } else {
+      console.log('No file selected');
     }
   };
 
   // Process Top Up File
   const processTopUpFile = async (file: File) => {
+    console.log('Starting to process top-up file:', file.name);
+    
     // Validate file type
     if (!file.name.endsWith('.enc')) {
+      console.log('Invalid file type:', file.name);
       toast({
         title: "Invalid File Type",
         description: "Please upload a valid .enc file",
@@ -262,6 +270,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
     // Validate file size (max 1MB)
     if (file.size > 1024 * 1024) {
+      console.log('File too large:', file.size);
       toast({
         title: "File Too Large",
         description: "File size must be less than 1MB",
@@ -270,12 +279,17 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       return;
     }
 
+    console.log('File validation passed, reading file...');
     const reader = new FileReader();
     
     reader.onload = async (e) => {
       const encryptedData = e.target?.result as string;
       
+      console.log('File read complete. Data length:', encryptedData?.length);
+      console.log('File read complete. Data preview:', encryptedData?.substring(0, 200));
+      
       if (!encryptedData) {
+        console.log('No encrypted data found');
         toast({
           title: "File Read Error",
           description: "Failed to read the uploaded file. Please try again.",
@@ -286,6 +300,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
       // Validate encrypted data format
       if (encryptedData.length < 50) {
+        console.log('File too short:', encryptedData.length);
         toast({
           title: "Invalid File Format",
           description: "The uploaded file appears to be corrupted or incomplete.",
@@ -295,6 +310,10 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       }
 
       try {
+        console.log('Sending POST request to /api/recharge/topup');
+        console.log('Encrypted data length:', encryptedData.length);
+        console.log('Encrypted data preview:', encryptedData.substring(0, 100) + '...');
+        
         toast({
           title: "Processing File",
           description: "Verifying encrypted balance file...",
@@ -1093,6 +1112,83 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
       return;
     }
 
+    const cardFee = parseInt(topUpFee);
+    const totalCollected = selectedCards.size * cardFee;
+    
+    // Calculate deduction based on number of cards (not card fee)
+    let deductionAmount;
+    if (selectedCards.size <= 1) {
+      deductionAmount = 0; // 0 or 1 cards: no deduction
+    } else if (selectedCards.size >= 2 && selectedCards.size <= 5) {
+      deductionAmount = 10; // 2-5 cards: 10 ETB deduction
+    } else if (selectedCards.size >= 6 && selectedCards.size <= 12) {
+      deductionAmount = 20; // 6-12 cards: 20 ETB deduction
+    } else {
+      deductionAmount = 30; // 13+ cards: 30 ETB deduction
+    }
+
+    // Calculate winner reward: total collected - deduction
+    // But winner gets 0 if 0 or 1 cards registered
+    let winnerReward;
+    if (selectedCards.size <= 1) {
+      winnerReward = 0; // 0 or 1 cards = 0 ETB reward
+    } else {
+      winnerReward = totalCollected - deductionAmount;
+    }
+
+    const remainingBalance = (user as any)?.balance || 0;
+
+    // Check if employee has sufficient balance (only if deduction > 0)
+    if (deductionAmount > 0 && remainingBalance < deductionAmount) {
+      toast({
+        title: "Insufficient Balance",
+        description: `Required: ${deductionAmount} ETB for game fee. Available: ${remainingBalance.toFixed(2)} ETB. Please recharge to continue.`,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      // Only deduct game fee if deduction amount > 0
+      if (deductionAmount > 0) {
+        const response = await fetch('/api/games/deduct-balance', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            amount: deductionAmount.toFixed(2),
+            cardCount: selectedCards.size,
+            cardFee: cardFee,
+            totalCollected: totalCollected.toFixed(2),
+            winnerReward: winnerReward.toFixed(2),
+            description: `Game fee for ${selectedCards.size} cards at ${cardFee} ETB each. Total: ${totalCollected} ETB, Fee: ${deductionAmount} ETB, Winner reward: ${winnerReward} ETB`
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to deduct balance');
+        }
+
+        // Refresh user balance
+        queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
+      }
+
+      toast({
+        title: "Game Started",
+        description: deductionAmount > 0 ? `Game fee ${deductionAmount} ETB deducted. Winner will receive ${winnerReward} ETB` : `Game started. Winner will receive ${winnerReward} ETB`,
+        variant: "default"
+      });
+
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to deduct balance. Please try again.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     // Announce game start (non-blocking)
     customBingoVoice.announceGameStart().catch(error => {
       console.error('Error announcing game start:', error);
@@ -1502,6 +1598,104 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                 />
               </div>
 
+              {/* Machine ID Section */}
+              <div className="mb-6 bg-purple-50 rounded-lg p-6">
+                <h3 className="text-xl font-bold mb-4">Machine Information</h3>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600 font-medium">Machine ID:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-mono font-bold text-purple-600">
+                        {(user as any)?.machineId || 'Not Assigned'}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const machineId = (user as any)?.machineId || '';
+                          if (machineId) {
+                            navigator.clipboard.writeText(machineId);
+                            toast({
+                              title: "Copied!",
+                              description: "Machine ID copied to clipboard",
+                            });
+                          } else {
+                            toast({
+                              title: "No Machine ID",
+                              description: "Machine ID is not assigned",
+                              variant: "destructive"
+                            });
+                          }
+                        }}
+                        className="border-purple-300 text-purple-600 hover:bg-purple-100 mr-2"
+                      >
+                        Copy
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          const machineId = (user as any)?.machineId || '';
+                          if (machineId) {
+                            try {
+                              const response = await fetch('/api/auth/verify-machine-id', {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({ machineId }),
+                              });
+                              
+                              const result = await response.json();
+                              
+                              if (result.valid) {
+                                toast({
+                                  title: "✅ Machine ID Verified",
+                                  description: "This machine ID is valid for the current system",
+                                });
+                              } else {
+                                toast({
+                                  title: "❌ Invalid Machine ID",
+                                  description: "This machine ID is not valid for the current system",
+                                  variant: "destructive"
+                                });
+                              }
+                            } catch (error) {
+                              toast({
+                                title: "Verification Failed",
+                                description: "Failed to verify machine ID",
+                                variant: "destructive"
+                              });
+                            }
+                          } else {
+                            toast({
+                              title: "No Machine ID",
+                              description: "Machine ID is not assigned",
+                              variant: "destructive"
+                            });
+                          }
+                        }}
+                        className="border-green-300 text-green-600 hover:bg-green-100"
+                      >
+                        Verify
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600 font-medium">Account Number:</span>
+                    <span className="text-lg font-mono font-bold text-purple-600">
+                      {(user as any)?.accountNumber || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600 font-medium">Employee Name:</span>
+                    <span className="text-lg font-bold text-purple-600">
+                      {(user as any)?.name || 'N/A'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               {/* Game History */}
               <div className="mb-6">
                 <h3 className="text-xl font-bold mb-4">Game History</h3>
@@ -1583,9 +1777,14 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
             {/* Header */}
             <div className="bg-gray-800 text-white px-6 py-3 flex justify-between items-center">
               <h2 className="text-xl font-bold">Register Cards</h2>
-              <button onClick={() => setGameState('SETTING')} className="hover:text-red-400">
-                <X className="w-6 h-6" />
-              </button>
+              <div className="flex items-center gap-4">
+                <div className="text-sm font-bold text-green-400">
+                  Balance: {(user as any)?.balance || 0} ETB
+                </div>
+                <button onClick={() => setGameState('SETTING')} className="hover:text-red-400">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-1 overflow-hidden">
@@ -1752,7 +1951,12 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                 </div>
 
                 <div className="mb-4">
-                  <div className="text-sm text-gray-200 font-semibold">Total: {selectedCards.size * parseInt(topUpFee)} ETB</div>
+                  <div className="flex justify-between items-center">
+                    <div className="text-sm text-gray-200 font-semibold">Total: {selectedCards.size * parseInt(topUpFee)} ETB</div>
+                    <div className="text-sm text-green-400 font-semibold">
+                      Winners Reward: {selectedCards.size <= 1 ? 0 : (selectedCards.size * parseInt(topUpFee)) - (selectedCards.size >= 2 && selectedCards.size <= 5 ? 10 : selectedCards.size >= 6 && selectedCards.size <= 12 ? 20 : 30)} ETB
+                    </div>
+                  </div>
                 </div>
 
                 <Button

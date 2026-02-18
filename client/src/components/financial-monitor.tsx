@@ -31,18 +31,21 @@ interface FinancialMonitorProps {
   onExportData: () => void;
 }
 
-export default function FinancialMonitor({ employees, onExportData }: FinancialMonitorProps) {
+export default function FinancialMonitor({ onExportData }: FinancialMonitorProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [showPasswords, setShowPasswords] = useState<Record<number, boolean>>({});
   const [selectedPeriod, setSelectedPeriod] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const { toast } = useToast();
 
-  // Fetch real transaction data with caching
-  const { data: transactions = [], isLoading: transactionsLoading } = useQuery({
-    queryKey: ["/api/transactions/admin"],
+  // Fetch admin tracking data (separate from employee system)
+  const { data: trackingData, isLoading: trackingLoading } = useQuery({
+    queryKey: ["/api/admin/tracking-data"],
     enabled: true,
     staleTime: 300000 // Cache for 5 minutes
   });
+
+  const employees = trackingData?.users || [];
+  const financials = trackingData?.financials || {};
 
   const togglePasswordVisibility = (employeeId: number) => {
     setShowPasswords(prev => ({
@@ -67,58 +70,35 @@ export default function FinancialMonitor({ employees, onExportData }: FinancialM
     }
   };
 
-  // Memoize filtered transactions to prevent excessive re-calculations
-  const filteredTransactions = useMemo(() => {
-    if (!transactions || transactions.length === 0) return [];
-    
-    return transactions.filter(transaction => {
-      if (selectedPeriod === 'all') return true;
-      const transactionDate = new Date(transaction.createdAt);
-      const now = new Date();
-      
-      switch (selectedPeriod) {
-        case 'today':
-          return transactionDate.toDateString() === now.toDateString();
-        case 'week':
-          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          return transactionDate >= weekAgo;
-        case 'month':
-          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-          return transactionDate >= monthAgo;
-        default:
-          return true;
-      }
-    });
-  }, [transactions, selectedPeriod]);
-
   // Memoize filtered employees to prevent excessive re-calculations
   const filteredEmployees = useMemo(() => {
     if (!employees || employees.length === 0) return [];
     
-    return employees.filter(emp => 
-      emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.accountNumber?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    return employees.filter(employee => {
+      const matchesSearch = !searchTerm || 
+        employee.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        employee.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        employee.accountNumber?.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      return matchesSearch;
+    });
   }, [employees, searchTerm]);
 
-  // Memoize calculations to prevent excessive re-calculations
+  // Use admin financial data directly
   const totalRevenue = useMemo(() => {
-    // Total revenue = Sum of all admin-generated balances (employee balance * 10)
-    return filteredEmployees
-      .reduce((sum, emp) => sum + parseFloat(emp.adminGeneratedBalance || '0'), 0);
-  }, [filteredEmployees]);
+    const revenue = parseFloat(financials.totalAdminBalance || "0");
+    return revenue;
+  }, [financials]);
 
   const totalBalance = useMemo(() => {
-    // Total balance = Sum of all admin-generated balances (same as revenue)
-    return filteredEmployees
-      .reduce((sum, emp) => sum + parseFloat(emp.adminGeneratedBalance || '0'), 0);
-  }, [filteredEmployees]);
+    const balance = parseFloat(financials.totalAdminBalance || "0");
+    return balance;
+  }, [financials]);
 
   const totalCollected = useMemo(() => {
-    // Total collected = Sum of what employees paid to admin
-    return filteredEmployees
-      .reduce((sum, emp) => sum + parseFloat(emp.employeePaidAmount || '0'), 0);
-  }, [filteredEmployees]);
+    const collected = parseFloat(financials.totalEmployeePaid || "0");
+    return collected;
+  }, [financials]);
 
   const maskPassword = (password: string) => {
     if (!password || password.length <= 2) return '•••••••••';
@@ -126,7 +106,7 @@ export default function FinancialMonitor({ employees, onExportData }: FinancialM
   };
 
   // Show loading state
-  if (transactionsLoading) {
+  if (trackingLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 border-t-transparent"></div>

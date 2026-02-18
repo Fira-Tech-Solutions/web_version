@@ -1,0 +1,9 @@
+{
+  "dialect": "sqlite",
+  "schema": "./shared/schema-simple.ts",
+  "out": "./drizzle",
+  "driver": "better-sqlite3",
+  "dbCredentials": {
+    "url": "./db/bingo.db"
+  }
+}

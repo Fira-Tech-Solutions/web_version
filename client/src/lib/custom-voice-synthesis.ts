@@ -24,6 +24,7 @@ export class CustomBingoVoiceSynthesis {
       { name: 'female1', directory: 'female1', displayName: 'Female 1' },
       { name: 'melat2', directory: 'melat2', displayName: 'Melat 2' },
       { name: 'nati', directory: 'nati', displayName: 'Nati' },
+      { name: 'nigus', directory: 'nigus', displayName: 'Nigus' },
       { name: 'oromifa', directory: 'oromifa', displayName: 'Oromifa' },
       { name: 'real-arada', directory: 'real-arada', displayName: 'Real Arada' },
       { name: 'tigrigna', directory: 'tigrigna', displayName: 'Tigrigna' },
@@ -101,6 +102,12 @@ export class CustomBingoVoiceSynthesis {
       throw new Error('No voice selected');
     }
 
+    // Special handling for 'nigus' voice which uses simple numbering (1.wav, 2.wav, etc.)
+    if (this.selectedVoice.name === 'nigus') {
+      return `/voices/${this.selectedVoice.directory}/${number}.wav`;
+    }
+
+    // Standard bingo format for other voices (B1.mp3, I16.mp3, etc.)
     const letter = this.getLetterForNumber(number);
     const fileName = `${letter}${number}.mp3`;
     return `/voices/${this.selectedVoice.directory}/${fileName}`;

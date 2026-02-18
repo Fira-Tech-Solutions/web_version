@@ -4,10 +4,13 @@ import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import session from "express-session";
 import SqliteStore from "better-sqlite3-session-store";
-import { sqlite } from "./db/sqlite";
-import { db } from "./db";
-import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./lib/vite";
+import Database from "better-sqlite3";
+import path from "path";
+import { registerRoutes } from "./src/routes";
+import { setupVite, serveStatic, log } from "./src/lib/vite";
+
+// SQLite database for session store
+const sqlite = new Database(process.env.SESSION_DB_PATH || path.join(process.cwd(), 'data', 'sessions.db'));
 
 const app = express();
 
@@ -76,7 +79,7 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        logLine += " :: " + JSON.stringify(capturedJsonResponse);
       }
 
       if (logLine.length > 80) {
@@ -90,13 +93,30 @@ app.use((req, res, next) => {
   next();
 });
 
+import { exec } from 'child_process';
+
 (async () => {
+  // Kill any existing process on port 5000 before starting
+  const port = 5000;
+
+  try {
+    exec('lsof -ti:' + port + ' | xargs kill -9', (error, stdout, stderr) => {
+      if (error) {
+        console.log('No process found on port ' + port + ' or error killing: ' + error.message);
+      } else {
+        console.log('Killed existing process on port ' + port + ': ' + stdout);
+      }
+    });
+  } catch (error) {
+    console.log('Error checking/killing processes on port ' + port + ': ' + error.message);
+  }
+
   // Create HTTP server for Socket.io
   const server = createServer(app);
   const io = new SocketIOServer(server, {
     cors: {
       origin: "*",
-      methods: ["GET", "POST"]
+      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
     }
   });
 
@@ -112,7 +132,7 @@ app.use((req, res, next) => {
     });
   });
 
-  const { server: routeServer } = await registerRoutes(app);
+  await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -122,8 +142,6 @@ app.use((req, res, next) => {
     throw err;
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
   if (app.get("env") === "development") {
     await setupVite(app, server);
@@ -134,23 +152,21 @@ app.use((req, res, next) => {
   // ALWAYS serve the app on port 5000
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
-  const port = 5000;
 
   server.listen(port, "0.0.0.0", async () => {
     log(`serving on port ${port}`);
     console.log("SQLite database initialized with better-sqlite3.");
     console.log("Socket.io server initialized for real-time updates.");
-    console.log("Hardcoded cartela auto-loading is disabled. Admins can add cartelas manually.");
   }).on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {
-      log(`Port ${port} is already in use. Trying to find an alternative port...`);
+      log('Port ' + port + ' is already in use. Trying to find an alternative port...');
       // Try alternative ports
       const tryPort = (portToTry: number) => {
         server.listen({
           port: portToTry,
           host: "0.0.0.0",
         }, () => {
-          log(`serving on port ${portToTry}`);
+          log('serving on port ' + portToTry);
         }).on('error', (portErr: any) => {
           if (portErr.code === 'EADDRINUSE' && portToTry < 5010) {
             tryPort(portToTry + 1);
@@ -162,7 +178,7 @@ app.use((req, res, next) => {
       };
       tryPort(5001);
     } else {
-      log(`Failed to start server: ${err.message}`);
+      log('Failed to start server: ' + err.message);
       process.exit(1);
     }
   });

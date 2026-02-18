@@ -145,7 +145,7 @@ export default function UserProvisioning({ privateKey, employees, onFileGenerate
       const data = await response.json();
       
       // Download the file
-      const blob = new Blob([data.fileData], { type: "application/octet-stream" });
+      const blob = new Blob([data.encryptedData], { type: "application/octet-stream" });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -303,9 +303,12 @@ export default function UserProvisioning({ privateKey, employees, onFileGenerate
                     id="machineId"
                     value={machineId}
                     onChange={(e) => setMachineId(e.target.value)}
-                    placeholder="DEV-XXXXXXXX or hardware ID"
+                    placeholder="BNG-XXXXXXXXXXXX (from employee's system)"
                     className="bg-gray-900 border-gray-700 text-white placeholder:text-gray-400 font-mono text-sm"
                   />
+                  <p className="text-xs text-gray-500">
+                    Enter the machine ID from the employee's report tab
+                  </p>
                 </div>
               </div>
 
