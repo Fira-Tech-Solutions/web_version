@@ -192,13 +192,22 @@ export function GameManagement({
             {activeGame.status === 'waiting' && (
               <Button
                 onClick={handleStartGame}
-                disabled={players.length < 2}
+                disabled={players.length < 2 || ((user as any)?.balance || 0) < 50}
                 className="w-full"
                 size="lg"
               >
                 <PlayIcon className="h-4 w-4 mr-2" />
                 Start Game
               </Button>
+            )}
+            
+            {/* Balance Warning */}
+            {activeGame.status === 'waiting' && ((user as any)?.balance || 0) < 50 && (
+              <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+                <p className="text-xs text-yellow-800 text-center">
+                  ⚠️ Insufficient balance (minimum 50 ETB required to start a game)
+                </p>
+              </div>
             )}
 
             {activeGame.status === 'active' && (

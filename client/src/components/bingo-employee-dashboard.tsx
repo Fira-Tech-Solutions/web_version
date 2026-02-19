@@ -1962,10 +1962,19 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                 <Button
                   onClick={handleStartGame}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3"
-                  disabled={selectedCards.size === 0}
+                  disabled={selectedCards.size === 0 || ((user as any)?.balance || 0) < 50}
                 >
                   Start Game
                 </Button>
+                
+                {/* Balance Warning */}
+                {((user as any)?.balance || 0) < 50 && (
+                  <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+                    <p className="text-xs text-yellow-800 text-center">
+                      ⚠️ Insufficient balance (minimum 50 ETB required to start a game)
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -655,10 +655,19 @@ export default function EmployeeBingoDashboard({ onLogout }: EmployeeBingoDashbo
                   <Button 
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                     onClick={() => startGameMutation.mutate()}
-                    disabled={!activeGameId || gameActive || startGameMutation.isPending}
+                    disabled={!activeGameId || gameActive || startGameMutation.isPending || (parseFloat(balance?.balance || '0') < 50)}
                   >
                     {startGameMutation.isPending ? "Starting..." : "Start Game"}
                   </Button>
+                  
+                  {/* Balance Warning */}
+                  {balance && parseFloat(balance.balance) < 50 && (
+                    <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+                      <p className="text-xs text-yellow-800 text-center">
+                        ⚠️ Insufficient balance (minimum 50 ETB required to start a game)
+                      </p>
+                    </div>
+                  )}
 
                   {/* Number Calling Controls */}
                   {gameActive && (
