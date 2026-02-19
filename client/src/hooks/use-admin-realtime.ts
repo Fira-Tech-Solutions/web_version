@@ -37,7 +37,7 @@ export function useAdminRealtime() {
       console.log('👥 New user created:', data.user);
       
       // Invalidate and refetch admin tracking data
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/tracking'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/tracking-data'] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/employees'] });
       
       // Show notification

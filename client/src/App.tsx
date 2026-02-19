@@ -5,8 +5,6 @@ import { AuthProvider, useAuth } from "./hooks/use-auth";
 import { useLicenseStatus } from "./hooks/use-license";
 import { Toaster } from "./components/ui/toaster";
 import LoginPage from "./pages/login-page";
-import RegistrationPage from "./pages/registration-page";
-import TestLogin from "./pages/test-login";
 import SecureAdminDashboard from "./pages/secure-admin-dashboard";
 import EmployeeDashboard from "./pages/employee-dashboard";
 
@@ -22,8 +20,7 @@ function AppRouter() {
   if (!isLoading && !activated) {
     return (
       <Router>
-        <Route path="/" component={RegistrationPage} />
-        <Route path="/login" component={RegistrationPage} />
+        <Route path="/" component={LoginPage} />
       </Router>
     );
   }
@@ -34,7 +31,6 @@ function AppRouter() {
       <Router>
         <Route path="/" component={LoginPage} />
         <Route path="/login" component={LoginPage} />
-        <Route path="/test-login" component={TestLogin} />
 
         {/* Dashboard Routes */}
         <Route path="/dashboard/admin">
@@ -49,9 +45,6 @@ function AppRouter() {
           <SecureAdminDashboard onLogout={handleLogout} />
         </Route>
         <Route path="/employee">
-          <EmployeeDashboard onLogout={handleLogout} />
-        </Route>
-        <Route path="/employee-dashboard">
           <EmployeeDashboard onLogout={handleLogout} />
         </Route>
       </Router>

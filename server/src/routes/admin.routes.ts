@@ -15,7 +15,6 @@ router.put("/employees/:id/machine-id", adminController.updateEmployeeMachineId)
 router.patch("/employees/:id/password", adminController.updateEmployeePassword);
 
 // Tracking data
-router.get("/tracking", adminController.getTrackingData);
 router.get("/tracking-data", adminController.getTrackingData);
 
 // Admin transactions
@@ -41,10 +40,5 @@ router.get("/game-history", adminController.getAdminGameHistory);
 // Admins management (from admin perspective)
 router.post("/create-admin", adminController.createAdmin);
 router.post("/create-employee", adminController.createEmployee);
-
-// Employee profit margins
-router.get("/profit-margins", adminController.getEmployeeProfitMargins);
-router.post("/profit-margins", adminController.setEmployeeProfitMargin);
-router.patch("/profit-margins/:id", adminController.updateEmployeeProfitMargin);
 
 export const adminRoutes = router;

@@ -11,8 +11,6 @@ import { authRoutes } from "./auth.routes";
 import { adminRoutes } from "./admin.routes";
 import { gameRoutes } from "./game.routes";
 import { userRoutes } from "./user.routes";
-import { superAdminRoutes } from "./superAdmin.routes";
-import { analyticsRoutes } from "./analytics.routes";
 import { cartelaRoutes } from "./cartela.routes";
 import { balanceRoutes } from "./balance.routes";
 import { licenseRoutes, licenseController } from "./license.routes";
@@ -49,8 +47,6 @@ export async function registerRoutes(app: Express) {
   app.use("/api/auth", authRoutes);
   app.use("/api/admin", adminRoutes);
   app.use("/api/games", gameRoutes);
-  app.use("/api/super-admin", superAdminRoutes);
-  app.use("/api/analytics", analyticsRoutes);
   app.use("/api/cartelas", cartelaRoutes);
   app.use("/api/balance", balanceRoutes);
   

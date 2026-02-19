@@ -14,9 +14,6 @@ export const users = sqliteTable("users", {
   balance: real("balance").default(0),
   isBlocked: integer("is_blocked", { mode: "boolean" }).default(false),
   creditBalance: real("credit_balance").default(0),
-  referredBy: integer("referred_by"),
-  commissionRate: real("commission_rate").default(0),
-  profitMargin: real("profit_margin").default(20), // Employee's profit margin
   totalRevenue: real("total_revenue").default(0), // Employee's total revenue
   totalGames: integer("total_games").default(0), // Employee's total games
   totalPlayers: integer("total_players").default(0), // Employee's total players
