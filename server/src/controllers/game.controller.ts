@@ -4,6 +4,7 @@ import { storage } from "../../storage/storage";
 import { checkBingoWin } from "../services/bingo.service";
 import { emitEvent } from "../services/socket.service";
 import { getFixedCartelaPattern } from "../lib/fixed-cartelas";
+import secureLogger from "../lib/secure-logger";
 
 // ─── CREATE GAME ────────────────────────────────────────────────────
 export async function createGame(req: Request, res: Response) {
@@ -54,10 +55,16 @@ export async function createGame(req: Request, res: Response) {
             shopId: user.shopId!,
             employeeId: userId,
             status: 'pending',
-            entryFee: entryFee.toString(),
-            prizePool: "0.00",
-            calledNumbers: []
+            prizePool: '0.00',
+            entryFee: req.body.entryFee || '20.00',
+            calledNumbers: [],
+            winnerId: null,
+            startedAt: null,
+            completedAt: null
         });
+
+        // Log game creation
+        secureLogger.logGameCreation(game, userId, user.username);
 
         res.json(game);
     } catch (error) {

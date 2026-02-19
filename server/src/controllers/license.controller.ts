@@ -14,17 +14,24 @@ import {
     generateFileSignature,
 } from "../../../scripts/license-db";
 import { storage } from "../../storage/storage";
-import { decryptData, verifyBalance } from "../lib/crypto";
+import { decryptData, verifyBalance, signBalance, encryptData } from "../lib/crypto";
+import secureConfig from "../config/secure-config";
 
-const PUBLIC_KEY_PATH = path.join(process.cwd(), "keys", "public_key.pem");
+// Use secure configuration instead of hardcoded paths
 let PUBLIC_KEY: string | null = null;
 
 try {
-    if (fs.existsSync(PUBLIC_KEY_PATH)) {
-        PUBLIC_KEY = fs.readFileSync(PUBLIC_KEY_PATH, "utf8");
+    PUBLIC_KEY = secureConfig.getRSAPublicKey();
+    if (!PUBLIC_KEY) {
+        console.warn("License Controller: Public key not found in secure config");
+        // Fallback to file for development
+        const PUBLIC_KEY_PATH = path.join(process.cwd(), "keys", "public_key.pem");
+        if (fs.existsSync(PUBLIC_KEY_PATH)) {
+            PUBLIC_KEY = fs.readFileSync(PUBLIC_KEY_PATH, "utf8");
+        }
     }
 } catch (e) {
-    console.warn("License Controller: Public key not found at", PUBLIC_KEY_PATH);
+    console.warn("License Controller: Failed to load public key", e);
 }
 
 // GET /api/license/status
@@ -42,6 +49,45 @@ export const getMachineId = (_req: Request, res: Response) => {
         res.json({ machineId: getHardwareId() });
     } catch (err) {
         res.status(500).json({ message: "Failed to get machine ID" });
+    }
+};
+
+// POST /api/license/deactivate
+export const deactivate = async (req: Request, res: Response) => {
+    try {
+        const userId = (req.session as any)?.userId;
+        if (!userId) {
+            return res.status(401).json({ message: "Authentication required" });
+        }
+
+        const user = await storage.getUser(userId);
+        if (!user || user.role !== 'admin') {
+            return res.status(403).json({ message: "Admin access required" });
+        }
+
+        const { machineId } = req.body;
+        if (!machineId) {
+            return res.status(400).json({ message: "Machine ID required" });
+        }
+
+        // Get current machine ID for verification
+        const currentMachineId = getHardwareId();
+        if (machineId !== currentMachineId) {
+            return res.status(403).json({ 
+                message: "Machine ID mismatch. You can only deactivate the current machine." 
+            });
+        }
+
+        const { deactivateActivation } = require("../../../scripts/license-db");
+        deactivateActivation(machineId);
+
+        res.json({ 
+            success: true, 
+            message: "Machine deactivated successfully" 
+        });
+    } catch (error: any) {
+        console.error("Deactivation error:", error);
+        res.status(500).json({ message: "Failed to deactivate machine" });
     }
 };
 
@@ -107,7 +153,6 @@ export const generateActivation = (req: Request, res: Response) => {
         };
 
         // Sign the payload with the provided private key
-        const { signBalance } = require("../lib/crypto");
         const signature = signBalance(payload, privateKey);
         
         const activationFile = {
@@ -116,7 +161,6 @@ export const generateActivation = (req: Request, res: Response) => {
         };
 
         // Encrypt the activation file
-        const { encryptData } = require("../lib/crypto");
         const encryptedData = encryptData(activationFile);
 
         // Generate filename

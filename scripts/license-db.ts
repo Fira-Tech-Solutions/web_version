@@ -86,6 +86,11 @@ export function setActivation(machineId: string): void {
   ).run(machineId);
 }
 
+export function deactivateActivation(machineId: string): void {
+  const database = getLicenseDb();
+  database.prepare("DELETE FROM activation WHERE machine_id = ?").run(machineId);
+}
+
 export function isTokenUsed(transactionId: string): boolean {
   const database = getLicenseDb();
   const row = database.prepare("SELECT 1 FROM used_tokens WHERE transaction_id = ?").get(transactionId);

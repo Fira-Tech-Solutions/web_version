@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Activation Test</title>
+</head>
+<body>
+    <h1>Activation System Test</h1>
+    <div id="status">Loading...</div>
+    
+    <script>
+        // Test API endpoints
+        async function testAPI() {
+            try {
+                // Test license status
+                const statusResponse = await fetch('/api/license/status');
+                const statusData = await statusResponse.json();
+                document.getElementById('status').innerHTML = `License Status: ${statusData.activated ? 'Activated' : 'Not Activated'}`;
+                
+                // Test machine ID
+                const machineResponse = await fetch('/api/license/machine-id');
+                const machineData = await machineResponse.json();
+                document.getElementById('status').innerHTML += `<br>Machine ID: ${machineData.machineId}`;
+                
+                // Test auth
+                const authResponse = await fetch('/api/auth/me', {
+                    credentials: 'include'
+                });
+                if (authResponse.ok) {
+                    const authData = await authResponse.json();
+                    document.getElementById('status').innerHTML += `<br>Auth: ${authData.user?.username || 'Failed'}`;
+                } else {
+                    document.getElementById('status').innerHTML += '<br>Auth: Failed';
+                }
+                
+            } catch (error) {
+                document.getElementById('status').innerHTML = `Error: ${error.message}`;
+            }
+        }
+        
+        testAPI();
+    </script>
+</body>
+</html>

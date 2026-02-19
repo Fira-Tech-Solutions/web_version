@@ -2,27 +2,39 @@ import { Route, Router, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./hooks/use-auth";
-import { useLicenseStatus } from "./hooks/use-license";
+import { useActivation } from "./hooks/use-activation";
 import { Toaster } from "./components/ui/toaster";
 import LoginPage from "./pages/login-page";
 import SecureAdminDashboard from "./pages/secure-admin-dashboard";
 import EmployeeDashboard from "./pages/employee-dashboard";
+import ActivationScreen from "./components/activation-screen";
+import ActivationGuard from "./components/activation-guard";
+import { useState } from "react";
 
 function AppRouter() {
   const { user } = useAuth();
-  const { activated, isLoading } = useLicenseStatus();
+  const { isActivated, isLoading, refreshStatus } = useActivation();
+  const [userState, setUserState] = useState<any>(null);
 
   const handleLogout = () => {
     window.location.href = "/";
   };
 
-  // Locked: show First-Time Registration for / and /login
-  if (!isLoading && !activated) {
+  // Show loading while checking activation
+  if (isLoading) {
     return (
-      <Router>
-        <Route path="/" component={LoginPage} />
-      </Router>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Checking activation status...</p>
+        </div>
+      </div>
     );
+  }
+
+  // If not activated, show activation screen
+  if (!isActivated) {
+    return <ActivationScreen onActivationSuccess={refreshStatus} />;
   }
 
   return (

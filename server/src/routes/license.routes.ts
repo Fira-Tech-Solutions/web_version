@@ -9,6 +9,7 @@ const rechargeRouter = Router();
 router.get("/status", licenseController.getStatus);
 router.get("/machine-id", licenseController.getMachineId);
 router.post("/generate-activation", licenseController.generateActivation);
+router.post("/deactivate", licenseController.deactivate);
 
 // Recharge routes
 rechargeRouter.post("/topup", licenseController.topup);

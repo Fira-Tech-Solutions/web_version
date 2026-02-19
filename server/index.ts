@@ -8,6 +8,7 @@ import Database from "better-sqlite3";
 import path from "path";
 import { registerRoutes } from "./src/routes";
 import { setupVite, serveStatic, log } from "./src/lib/vite";
+import "./src/lib/console-override";
 
 // SQLite database for session store
 const sqlite = new Database(process.env.SESSION_DB_PATH || path.join(process.cwd(), 'data', 'sessions.db'));

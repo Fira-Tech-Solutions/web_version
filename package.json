@@ -5,12 +5,13 @@
   "license": "MIT",
   "scripts": {
     "dev": "NODE_ENV=development tsx --env-file=.env server/index.ts",
-    "build": "vite build",
+    "build": "vite build && npm run obfuscate",
     "build:server": "esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
     "start:web": "NODE_ENV=production tsx --env-file=.env server/index.ts",
     "check": "tsc",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "obfuscate": "javascript-obfuscator dist/server.js --output dist/server.js --compact true --control-flow-flattening true --dead-code-injection true --debug-protection true --domain-lock true --split-strings true --string-array true --self-defending true --reserved-strings ['console', 'log', 'error', 'warn']"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -107,6 +108,7 @@
     "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.31.1",
     "esbuild": "^0.25.0",
+    "javascript-obfuscator": "^4.0.2",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.21.0",
