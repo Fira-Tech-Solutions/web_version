@@ -1,8 +1,8 @@
 import {
   users, games, gamePlayers, transactions, gameHistory,
-  dailyRevenueSummary, cartelas,
+  dailyRevenueSummary, cartelas, usedRecharges,
   type User, type Game, type GamePlayer,
-  type Transaction, type GameHistory, type DailyRevenueSummary, type Cartela
+  type Transaction, type GameHistory, type DailyRevenueSummary, type Cartela, type UsedRecharge
 } from "@shared/schema-simple";
 import { employeeDb } from "../../scripts/employee-db";
 import { eq, and, or, desc, gte, lte, sum, count } from "drizzle-orm";
@@ -15,6 +15,7 @@ export interface IStorage {
   // User methods
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByAccountNumber(accountNumber: string): Promise<User | undefined>;
   createUser(user: any): Promise<User>;
   updateUser(id: number, updates: Partial<User>): Promise<User | undefined>;
   updateUserBalance(id: number, balance: string): Promise<User | undefined>;
@@ -76,6 +77,11 @@ export interface IStorage {
   getMasterFloat(employeeId?: number): Promise<string>;
   getAllUserBalances(): Promise<{ userId: number; username: string; balance: string; role: string }[]>;
 
+  // Used Recharges methods (for replay protection)
+  createUsedRecharge(recharge: any): Promise<UsedRecharge>;
+  isNonceUsed(nonce: string): Promise<boolean>;
+  isSignatureUsed(signature: string): Promise<boolean>;
+
   // EAT time zone utility methods
   getCurrentEATDate(): string;
   performDailyReset(): Promise<void>;
@@ -102,6 +108,22 @@ export class DatabaseStorage implements IStorage {
   async getUserByUsername(username: string): Promise<User | undefined> {
     const stmt = employeeDb.prepare('SELECT * FROM users WHERE username = ?');
     const user = stmt.get(username) as any;
+    
+    if (user) {
+      // Map database fields to frontend format
+      return {
+        ...user,
+        machineId: user.machine_id, // Convert machine_id to machineId
+        isBlocked: Boolean(user.is_blocked) // Convert is_blocked to isBlocked
+      } as User;
+    }
+    
+    return undefined;
+  }
+
+  async getUserByAccountNumber(accountNumber: string): Promise<User | undefined> {
+    const stmt = employeeDb.prepare('SELECT * FROM users WHERE account_number = ?');
+    const user = stmt.get(accountNumber) as any;
     
     if (user) {
       // Map database fields to frontend format
@@ -603,6 +625,22 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         lt(dailyRevenueSummary.date, today)
       ));
+  }
+
+  // Used Recharges methods (for replay protection)
+  async createUsedRecharge(recharge: any): Promise<UsedRecharge> {
+    const [newUsedRecharge] = await db.insert(usedRecharges).values(recharge).returning();
+    return newUsedRecharge;
+  }
+
+  async isNonceUsed(nonce: string): Promise<boolean> {
+    const [existing] = await db.select().from(usedRecharges).where(eq(usedRecharges.nonce, nonce));
+    return !!existing;
+  }
+
+  async isSignatureUsed(signature: string): Promise<boolean> {
+    const [existing] = await db.select().from(usedRecharges).where(eq(usedRecharges.signature, signature));
+    return !!existing;
   }
 }
 

@@ -15,12 +15,7 @@ router.delete("/:id", userController.deleteUser);
 router.patch("/:id/password", userController.updateUserPassword);
 
 // Shop-based user lookup
-router.get("/shop/:shopId", userController.getUsersByShop);
 router.get("/shop", userController.getShopUsers);
-
-// Collectors
-router.post("/create-collector", userController.createCollector);
-router.get("/:employeeId/collectors", userController.getCollectors);
 
 // Employee recharge
 router.post("/employee/recharge/redeem", userController.rechargeRedeem);

@@ -66,6 +66,16 @@ export const gameHistory = sqliteTable("game_history", {
   createdAt: integer("createdAt", { mode: "timestamp" }),
 });
 
+export const usedRecharges = sqliteTable("used_recharges", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  nonce: text("nonce").notNull().unique(),
+  signature: text("signature").notNull(),
+  amount: real("amount").notNull(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  machineId: text("machine_id").notNull(),
+  usedAt: integer("used_at", { mode: "timestamp" }).default(new Date()),
+});
+
 export const cartelas = sqliteTable("cartelas", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   employeeId: integer("employee_id").notNull().references(() => users.id, { onDelete: "cascade" }),

@@ -1,6 +1,7 @@
 // @ts-nocheck
 import type { Request, Response } from "express";
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 import { storage } from "../../storage/storage";
 import { adminStorage } from "../../storage/admin-storage";
 import { adminDb } from "../../../scripts/admin-db";
@@ -21,38 +22,77 @@ export async function generateRechargeFile(req: Request, res: Response) {
             return res.status(403).json({ message: "Admin access required" });
         }
 
-        const { employeeAccountNumber, amount, machineId, privateKey } = req.body;
-        if (!employeeAccountNumber || !amount) {
-            return res.status(400).json({ message: "Employee account number and amount required" });
+        const { targetUserId, employeeAccountNumber, amount, machineId, privateKey } = req.body;
+        
+        // Support both parameter names for backward compatibility
+        const finalTargetUserId = targetUserId || employeeAccountNumber;
+        
+        console.log("Generate recharge request:", { targetUserId, employeeAccountNumber, finalTargetUserId, amount, hasPrivateKey: !!privateKey });
+        
+        if (!finalTargetUserId || !amount || !privateKey) {
+            return res.status(400).json({ 
+                message: "Target user ID/account number, amount, and private key required",
+                received: { targetUserId, employeeAccountNumber, amount, hasPrivateKey: !!privateKey }
+            });
         }
 
-        const signingKey = privateKey;
-        const finalMachineId = machineId;
+        // Get target user details - support both ID and account number
+        let targetUser;
+        if (!targetUserId) {
+            // If it's not a number, treat as account number
+            targetUser = await storage.getUserByAccountNumber(finalTargetUserId);
+        } else {
+            // If it's a number, treat as user ID
+            targetUser = await storage.getUser(parseInt(finalTargetUserId));
+        }
+        
+        if (!targetUser) {
+            return res.status(404).json({ message: "Target user not found" });
+        }
 
+        // Create secure payload with all required fields
+        console.log("Creating payload with machine ID:", machineId);
         const payload = {
-            employeeAccountNumber,
-            amount,
-            shopId: user.shopId,
-            timestamp: new Date().getTime(),
-            nonce: Math.random().toString(36).substring(7),
-            machineId: finalMachineId
+            amount: parseFloat(amount),
+            targetUserId: targetUser.id,
+            targetUsername: targetUser.username,
+            machineId: machineId,
+            nonce: crypto.randomBytes(16).toString('hex'),
+            timestamp: Date.now()
         };
 
-        const signature = signBalance(payload, signingKey);
-        const encryptedData = encryptData(payload);
+        // Sign the payload with RSA private key
+        const signature = signBalance(payload, privateKey);
+        
+        // Create the encrypted file content
+        const fileContent = {
+            payload,
+            signature
+        };
 
+        const encryptedData = encryptData(fileContent);
+
+        // Record the recharge file in admin database
         await adminStorage.createRechargeFileRecord({
-            filename: `recharge_${amount}.enc`,
+            filename: `recharge_${amount}_${targetUser.username}_${Date.now()}.enc`,
             fileData: encryptedData,
             signature: signature,
-            employeeId: employeeAccountNumber,
+            employeeId: targetUser.id.toString(),
             amount,
             shopId: user.shopId
         });
 
-        await adminStorage.updateAdminUserBalance(employeeAccountNumber, (parseFloat(amount) * 10).toString(), amount);
-
-        res.json({ encryptedData, filename: `recharge_${amount}.enc` });
+        res.json({
+            success: true,
+            filename: `recharge_${amount}_${targetUser.username}_${Date.now()}.enc`,
+            encryptedData,
+            payload: {
+                amount: payload.amount,
+                targetUsername: payload.targetUsername,
+                machineId: payload.machineId,
+                timestamp: payload.timestamp
+            }
+        });
     } catch (error) {
         console.error("Recharge file generation error:", error);
         res.status(500).json({ message: "Failed to generate recharge file" });

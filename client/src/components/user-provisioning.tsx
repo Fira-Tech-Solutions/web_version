@@ -124,7 +124,7 @@ export default function UserProvisioning({ privateKey, employees, onFileGenerate
       });
       return;
     }
-
+    console.log(`selectedEmployee: ${selectedEmployee}`);
     setIsGenerating(true);
     try {
       const response = await fetch('/api/admin/recharge/generate-file', {

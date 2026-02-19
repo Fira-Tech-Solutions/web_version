@@ -15,7 +15,8 @@ import { superAdminRoutes } from "./superAdmin.routes";
 import { analyticsRoutes } from "./analytics.routes";
 import { cartelaRoutes } from "./cartela.routes";
 import { balanceRoutes } from "./balance.routes";
-import { licenseRoutes, rechargeRoutes, licenseController } from "./license.routes";
+import { licenseRoutes, licenseController } from "./license.routes";
+import rechargeRoutes from "./recharge.routes";
 import * as adminController from "../controllers/admin.controller";
 
 // WebSocket clients by game ID

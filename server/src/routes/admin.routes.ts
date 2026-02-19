@@ -8,8 +8,10 @@ const router = Router();
 router.get("/employees", adminController.getAdminEmployees);
 router.delete("/employees/:id", adminController.deleteAdminEmployee);
 router.post("/employees/generate-recharge-file", adminController.generateRechargeFile);
+router.post("/recharge/generate-file", adminController.generateRechargeFile); // Backward compatibility
 router.post("/employees/generate-account-file", adminController.generateAccountFile);
 router.patch("/employees/:id/machine-id", adminController.updateEmployeeMachineId);
+router.put("/employees/:id/machine-id", adminController.updateEmployeeMachineId); // Support PUT as well
 router.patch("/employees/:id/password", adminController.updateEmployeePassword);
 
 // Tracking data

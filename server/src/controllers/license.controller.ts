@@ -114,6 +114,7 @@ export const topup = async (req: Request, res: Response) => {
 
         const { payload, signature } = decrypted;
         if (!payload || !signature) {
+            console.log("Decrypted data:", decrypted);
             return res.status(400).json({ message: "Invalid balance file structure" });
         }
 
