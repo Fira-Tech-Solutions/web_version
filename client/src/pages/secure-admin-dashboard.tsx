@@ -31,6 +31,7 @@ import SecuritySettings from "@/components/security-settings";
 import UserProvisioning from "@/components/user-provisioning";
 import FinancialMonitor from "@/components/financial-monitor";
 import EmployeeManagement from "@/components/employee-management";
+import ActivationGenerator from "@/components/activation-generator";
 
 interface SecureAdminDashboardProps {
   onLogout: () => void;
@@ -87,6 +88,16 @@ export default function SecureAdminDashboard({ onLogout }: SecureAdminDashboardP
       title: "Private Key Updated",
       description: "Your private key has been securely loaded"
     });
+  };
+
+  const handleLogout = () => {
+    // Clear private key on logout
+    setPrivateKey("");
+    toast({
+      title: "Logged Out",
+      description: "Private key has been cleared for security"
+    });
+    onLogout();
   };
 
   const handleFileGenerated = (fileData: any) => {
@@ -199,7 +210,7 @@ export default function SecureAdminDashboard({ onLogout }: SecureAdminDashboardP
               </div>
               <Button 
                 variant="outline" 
-                onClick={onLogout}
+                onClick={handleLogout}
                 className="bg-red-900/20 text-red-400 border-red-800/30 hover:bg-red-900/30"
               >
                 Logout
@@ -259,7 +270,7 @@ export default function SecureAdminDashboard({ onLogout }: SecureAdminDashboardP
         {/* Main Content Tabs */}
         <div className="mt-8">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-4 bg-slate-800 border border-slate-700">
+            <TabsList className="grid w-full grid-cols-5 bg-slate-800 border border-slate-700">
               <TabsTrigger value="employees" className="data-[state=active]:bg-slate-700 data-[state=active]:text-white">
                 <Users className="w-4 h-4 mr-2" />
                 Employees
@@ -271,6 +282,10 @@ export default function SecureAdminDashboard({ onLogout }: SecureAdminDashboardP
               <TabsTrigger value="provisioning" className="data-[state=active]:bg-slate-700 data-[state=active]:text-white">
                 <UserPlus className="w-4 h-4 mr-2" />
                 Provisioning
+              </TabsTrigger>
+              <TabsTrigger value="activation" className="data-[state=active]:bg-slate-700 data-[state=active]:text-white">
+                <Key className="w-4 h-4 mr-2" />
+                Activation
               </TabsTrigger>
               <TabsTrigger value="monitoring" className="data-[state=active]:bg-slate-700 data-[state=active]:text-white">
                 <TrendingUp className="w-4 h-4 mr-2" />
@@ -301,6 +316,11 @@ export default function SecureAdminDashboard({ onLogout }: SecureAdminDashboardP
                 employees={trackingData?.users?.filter(user => user.role === 'employee') || []}
                 onFileGenerated={handleFileGenerated}
               />
+            </TabsContent>
+
+            {/* Activation Tab */}
+            <TabsContent value="activation" className="space-y-6 mt-6">
+              <ActivationGenerator privateKey={privateKey} />
             </TabsContent>
 
             {/* Monitoring Tab */}

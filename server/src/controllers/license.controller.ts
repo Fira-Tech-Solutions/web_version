@@ -81,6 +81,63 @@ export const activate = (req: Request, res: Response) => {
     }
 };
 
+// POST /api/license/generate-activation
+export const generateActivation = (req: Request, res: Response) => {
+    try {
+        const userId = (req.session as any)?.userId;
+        if (!userId) {
+            return res.status(401).json({ message: "Authentication required" });
+        }
+
+        const { privateKey, machineId, expiryDays = 365 } = req.body;
+        
+        if (!privateKey || !machineId) {
+            return res.status(400).json({ 
+                message: "Private key and machine ID required",
+                received: { hasPrivateKey: !!privateKey, hasMachineId: !!machineId }
+            });
+        }
+
+        // Create activation payload
+        const payload = {
+            machineId: machineId,
+            timestamp: Date.now(),
+            expiryDate: Date.now() + (expiryDays * 24 * 60 * 60 * 1000), // Convert days to milliseconds
+            type: "activation"
+        };
+
+        // Sign the payload with the provided private key
+        const { signBalance } = require("../lib/crypto");
+        const signature = signBalance(payload, privateKey);
+        
+        const activationFile = {
+            payload,
+            signature
+        };
+
+        // Encrypt the activation file
+        const { encryptData } = require("../lib/crypto");
+        const encryptedData = encryptData(activationFile);
+
+        // Generate filename
+        const filename = `activation_${machineId.substring(0, 8)}_${Date.now()}.enc`;
+
+        res.json({
+            success: true,
+            filename,
+            encryptedData,
+            payload: {
+                machineId: payload.machineId,
+                expiryDate: new Date(payload.expiryDate).toISOString(),
+                type: payload.type
+            }
+        });
+    } catch (error) {
+        console.error("Activation file generation error:", error);
+        res.status(500).json({ message: "Failed to generate activation file" });
+    }
+};
+
 // POST /api/recharge/topup
 export const topup = async (req: Request, res: Response) => {
     if (!PUBLIC_KEY) {
