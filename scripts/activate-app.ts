@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import UltimateMachineIdGenerator from '../server/src/lib/ultimate-machine-id';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DATA_DIR, 'license.db');
@@ -11,7 +12,12 @@ function ensureDataDir() {
   }
 }
 
-function activateApp() {
+async function getMachineId(): Promise<string> {
+  const generator = UltimateMachineIdGenerator.getInstance();
+  return generator.getMachineId();
+}
+
+async function activateApp() {
   ensureDataDir();
   const db = new Database(DB_PATH);
   
@@ -49,15 +55,18 @@ function activateApp() {
     );
   `);
 
+  // Get ultimate machine ID
+  const machineId = await getMachineId();
+
   // Activate the app
   db.prepare(
     "INSERT OR REPLACE INTO activation (id, machine_id, activated_at) VALUES (1, ?, datetime('now'))"
-  ).run('test-machine-id');
+  ).run(machineId);
 
   console.log('✅ Application activated successfully!');
-  console.log('📝 Machine ID: test-machine-id');
+  console.log(`📝 Machine ID: ${machineId}`);
   
   db.close();
 }
 
-activateApp();
+activateApp().catch(console.error);

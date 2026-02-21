@@ -10,7 +10,7 @@
 import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
-import { encryptData, signBalance } from "../server/lib/crypto";
+import { encryptData, signBalance } from "../server/src/lib/crypto";
 
 const args = process.argv.slice(2);
 if (args.length < 1) {

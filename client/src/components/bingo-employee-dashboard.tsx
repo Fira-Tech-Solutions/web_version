@@ -1601,52 +1601,90 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
               {/* Machine ID Section */}
               <div className="mb-6 bg-purple-50 rounded-lg p-6">
                 <h3 className="text-xl font-bold mb-4">Machine Information</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600 font-medium">Machine ID:</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-mono font-bold text-purple-600">
-                        {(user as any)?.machineId || 'Not Assigned'}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const machineId = (user as any)?.machineId || '';
-                          if (machineId) {
-                            navigator.clipboard.writeText(machineId);
-                            toast({
-                              title: "Copied!",
-                              description: "Machine ID copied to clipboard",
-                            });
-                          } else {
-                            toast({
-                              title: "No Machine ID",
-                              description: "Machine ID is not assigned",
-                              variant: "destructive"
-                            });
-                          }
-                        }}
-                        className="border-purple-300 text-purple-600 hover:bg-purple-100 mr-2"
-                      >
-                        Copy
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={async () => {
-                          const machineId = (user as any)?.machineId || '';
-                          if (machineId) {
-                            try {
-                              const response = await fetch('/api/auth/verify-machine-id', {
-                                method: 'POST',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify({ machineId }),
+                <div className="space-y-4">
+                  {/* Base Machine ID */}
+                  <div className="bg-white rounded-lg p-4 border border-purple-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-gray-700 font-medium">Base Machine ID:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-mono font-bold text-blue-600">
+                          {(user as any)?.machineId?.split('-USR')[0] || 'Not Assigned'}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const baseMachineId = (user as any)?.machineId?.split('-USR')[0] || '';
+                            if (baseMachineId) {
+                              navigator.clipboard.writeText(baseMachineId);
+                              toast({
+                                title: "Copied!",
+                                description: "Base Machine ID copied to clipboard",
                               });
-                              
-                              const result = await response.json();
+                            } else {
+                              toast({
+                                title: "No Machine ID",
+                                description: "Base Machine ID is not assigned",
+                                variant: "destructive"
+                              });
+                            }
+                          }}
+                          className="border-blue-300 text-blue-600 hover:bg-blue-100"
+                        >
+                          Copy
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-500">System hardware fingerprint</div>
+                  </div>
+
+                  {/* User-Specific Machine ID */}
+                  <div className="bg-white rounded-lg p-4 border border-purple-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-gray-700 font-medium">Your Machine ID:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-mono font-bold text-purple-600">
+                          {(user as any)?.machineId || 'Not Assigned'}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const machineId = (user as any)?.machineId || '';
+                            if (machineId) {
+                              navigator.clipboard.writeText(machineId);
+                              toast({
+                                title: "Copied!",
+                                description: "Your Machine ID copied to clipboard",
+                              });
+                            } else {
+                              toast({
+                                title: "No Machine ID",
+                                description: "Machine ID is not assigned",
+                                variant: "destructive"
+                              });
+                            }
+                          }}
+                          className="border-purple-300 text-purple-600 hover:bg-purple-100 mr-2"
+                        >
+                          Copy
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            const machineId = (user as any)?.machineId || '';
+                            if (machineId) {
+                              try {
+                                const response = await fetch('/api/auth/verify-machine-id', {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                  },
+                                  body: JSON.stringify({ machineId }),
+                                });
+                                
+                                const result = await response.json();
                               
                               if (result.valid) {
                                 toast({
@@ -1681,6 +1719,8 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
                       </Button>
                     </div>
                   </div>
+
+                  {/* Account Info */}
                   <div className="flex items-center justify-between">
                     <span className="text-gray-600 font-medium">Account Number:</span>
                     <span className="text-lg font-mono font-bold text-purple-600">
@@ -1767,6 +1807,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
               </div>
             </div>
           </div>
+        </div>
         </div>
       )}
 

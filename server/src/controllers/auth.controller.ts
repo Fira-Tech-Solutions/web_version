@@ -4,8 +4,11 @@ import bcrypt from "bcrypt";
 import * as os from "os";
 import { storage } from "../../storage/storage";
 import { adminStorage } from "../../storage/admin-storage";
-import { MachineIdGenerator } from "../lib/machine-id-generator";
+import UltimateMachineIdGenerator from "../lib/ultimate-machine-id";
 import { encryptData, decryptData, signBalance, verifyBalance, generateKeyPair } from "../lib/crypto";
+
+// Initialize ultimate generator
+const ultimateGenerator = UltimateMachineIdGenerator.getInstance();
 
 const { privateKey: SYSTEM_PRIVATE_KEY, publicKey: SYSTEM_PUBLIC_KEY } = generateKeyPair();
 
@@ -185,7 +188,7 @@ export async function getCurrentUser(req: Request, res: Response) {
         if (isAdmin) {
             const adminUser = adminStorage.getAdminUserById(userId);
             if (adminUser) {
-                const machineId = await MachineIdGenerator.getUserMachineId(adminUser.id || userId, adminUser.username);
+                const machineId = await ultimateGenerator.getUserMachineId(adminUser.id || userId, adminUser.username);
                 user = {
                     id: adminUser.id,
                     username: adminUser.username,
@@ -212,7 +215,7 @@ export async function getCurrentUser(req: Request, res: Response) {
 
         // Generate machine ID dynamically for employees (if not already set)
         if (!user.machineId) {
-            user.machineId = await MachineIdGenerator.getUserMachineId(user.id, user.username);
+            user.machineId = await ultimateGenerator.getUserMachineId(user.id, user.username);
         }
 
         // For admins, include their shop's commission rate
@@ -240,16 +243,32 @@ export async function verifyMachineId(req: Request, res: Response) {
             return res.status(400).json({ message: "Machine ID is required" });
         }
 
-        const isValid = await MachineIdGenerator.verifyMachineId(machineId);
+        // Support both base and user-specific ultimate formats
+        const baseMachineId = machineId.split('-USR')[0]; // Extract base ID from user-specific ID
+        
+        if (!baseMachineId.startsWith('BNG-ULT-2.0-')) {
+            return res.status(400).json({
+                valid: false,
+                message: "Invalid machine ID format. Please use the ultimate machine ID format."
+            });
+        }
+
+        // Verify the base machine ID
+        const isValid = await ultimateGenerator.verifyMachineId(baseMachineId);
 
         if (isValid) {
             res.json({
                 valid: true,
-                message: "Machine ID is valid for this system",
+                message: machineId.includes('-USR') 
+                    ? "User-specific Machine ID is valid for this system"
+                    : "Base Machine ID is valid for this system",
                 systemInfo: {
                     platform: os.platform(),
                     arch: os.arch(),
-                    hostname: os.hostname()
+                    hostname: os.hostname(),
+                    format: machineId.includes('-USR') ? "User-Specific Ultimate" : "Base Ultimate",
+                    baseMachineId: baseMachineId,
+                    isUserSpecific: machineId.includes('-USR')
                 }
             });
         } else {

@@ -1,37 +1,37 @@
 /**
- * Hardware ID Generator - Stable Version
- * Uses stable hardware markers for consistent machine identification
+ * Hardware ID Generator - Ultimate Version Only
+ * Uses ultimate stable hardware markers for consistent machine identification
  */
-import StableMachineIdGenerator from './stable-machine-id';
+import UltimateMachineIdGenerator from './ultimate-machine-id';
 
-let generator: StableMachineIdGenerator | null = null;
+let generator: UltimateMachineIdGenerator | null = null;
 
 /**
  * Get hardware ID for machine binding
  */
-export function getHardwareId(): string {
+export async function getHardwareId(): Promise<string> {
   if (!generator) {
-    generator = new StableMachineIdGenerator();
+    generator = UltimateMachineIdGenerator.getInstance();
   }
   return generator.getMachineId();
 }
 
 /**
- * Verify machine ID (alias for stable generator)
+ * Verify machine ID (ultimate format only)
  */
-export function verifyMachineId(storedId: string): boolean {
+export async function verifyMachineId(storedId: string): Promise<boolean> {
   if (!generator) {
-    generator = new StableMachineIdGenerator();
+    generator = UltimateMachineIdGenerator.getInstance();
   }
   return generator.verifyMachineId(storedId);
 }
 
 /**
- * Check if hardware has changed (alias for stable generator)
+ * Check if hardware has changed (ultimate format only)
  */
 export function hasHardwareChanged(): boolean {
   if (!generator) {
-    generator = new StableMachineIdGenerator();
+    generator = UltimateMachineIdGenerator.getInstance();
   }
   return generator.hasHardwareChanged();
 }

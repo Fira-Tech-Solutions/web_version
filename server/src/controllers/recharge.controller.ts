@@ -77,14 +77,19 @@ export const topup = async (req: Request, res: Response) => {
         }
 
         // 3. Hardware Lock Check
-        const currentMachineId = getHardwareId();
+        const currentMachineId = await getHardwareId();
+        
+        // Extract base machine ID from file's machine ID (handles both base and user-specific formats)
+        const fileBaseMachineId = machineId.split('-USR')[0];
+        
         console.log("Hardware lock check:", {
             fileMachineId: machineId,
+            fileBaseMachineId: fileBaseMachineId,
             currentMachineId: currentMachineId,
-            match: machineId === currentMachineId
+            match: fileBaseMachineId === currentMachineId
         });
         
-        if (machineId !== currentMachineId) {
+        if (fileBaseMachineId !== currentMachineId) {
             return res.status(403).json({ 
                 message: "This recharge file is locked to another computer",
                 expected: currentMachineId,
@@ -158,9 +163,9 @@ export const topup = async (req: Request, res: Response) => {
 };
 
 // GET /api/recharge/machine-id
-export const getMachineId = (req: Request, res: Response) => {
+export const getMachineId = async (req: Request, res: Response) => {
     try {
-        const machineId = getHardwareId();
+        const machineId = await getHardwareId();
         res.json({ machineId });
     } catch (error) {
         console.error("Failed to get machine ID:", error);

@@ -44,9 +44,9 @@ export const getStatus = (_req: Request, res: Response) => {
 };
 
 // GET /api/license/machine-id
-export const getMachineId = (_req: Request, res: Response) => {
+export const getMachineId = async (_req: Request, res: Response) => {
     try {
-        res.json({ machineId: getHardwareId() });
+        res.json({ machineId: await getHardwareId() });
     } catch (err) {
         res.status(500).json({ message: "Failed to get machine ID" });
     }
@@ -71,7 +71,7 @@ export const deactivate = async (req: Request, res: Response) => {
         }
 
         // Get current machine ID for verification
-        const currentMachineId = getHardwareId();
+        const currentMachineId = await getHardwareId();
         if (machineId !== currentMachineId) {
             return res.status(403).json({ 
                 message: "Machine ID mismatch. You can only deactivate the current machine." 
@@ -92,7 +92,7 @@ export const deactivate = async (req: Request, res: Response) => {
 };
 
 // POST /api/activate
-export const activate = (req: Request, res: Response) => {
+export const activate = async (req: Request, res: Response) => {
     if (!PUBLIC_KEY) {
         return res.status(500).json({ message: "Server configuration error: Public key missing" });
     }
@@ -114,9 +114,17 @@ export const activate = (req: Request, res: Response) => {
             return res.status(401).json({ message: "Invalid signature" });
         }
 
-        const currentMachineId = getHardwareId();
-        if (payload.machineId !== currentMachineId) {
-            return res.status(403).json({ message: "MachineID mismatch" });
+        const currentMachineId = await getHardwareId();
+        
+        // Extract base machine ID from payload (handles both base and user-specific formats)
+        const payloadBaseMachineId = payload.machineId.split('-USR')[0];
+        
+        if (payloadBaseMachineId !== currentMachineId) {
+            return res.status(403).json({ 
+                message: "MachineID mismatch",
+                expected: currentMachineId,
+                received: payload.machineId
+            });
         }
 
         setActivation(payload.machineId);
