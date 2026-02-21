@@ -25,24 +25,19 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
 
   // Initialize heartbeat monitoring
   useEffect(() => {
-    // Check if app is locked on startup
-    if (HeartbeatMonitor.isAppLocked()) {
-      toast({
-        title: "Application Locked",
-        description: HeartbeatMonitor.getLockReason(),
-        variant: "destructive",
-      });
-      return;
-    }
+    // Lock functionality disabled - no lock checks needed
+    console.log('🔓 Lock functionality disabled - starting heartbeat monitoring');
     
-    // Start heartbeat monitoring
-    HeartbeatMonitor.startMonitoring();
+    // Only start heartbeat monitoring if user is authenticated
+    if (user && user.id) {
+      HeartbeatMonitor.startMonitoring();
+    }
     
     // Cleanup on unmount
     return () => {
       HeartbeatMonitor.stopMonitoring();
     };
-  }, []);
+  }, [user]);
 
   // Game state management
   const [gameState, setGameState] = useState<GameState>('SETTING');

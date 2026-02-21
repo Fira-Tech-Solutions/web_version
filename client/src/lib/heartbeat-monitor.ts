@@ -81,61 +81,32 @@ class HeartbeatMonitor {
    * Check if app is locked
    */
   public isAppLocked(): boolean {
-    return this.lockState.isLocked;
+    // Always return false - lock functionality disabled
+    return false;
   }
   
   /**
    * Get lock reason
    */
   public getLockReason(): string {
-    return this.lockState.reason;
+    // Return empty reason - lock functionality disabled
+    return "";
   }
   
   /**
    * Clear lock state (for development/testing)
    */
   public clearLock(): void {
-    this.lockState = { isLocked: false, reason: '', timestamp: 0 };
-    localStorage.removeItem(this.STORAGE_KEYS.LOCK_STATE);
-    
-    // Only reload if lock screen is currently showing and we're not initializing
-    const lockScreen = document.getElementById('tamper-lock-screen');
-    if (lockScreen && !this.isInitializing) {
-      // Remove lock screen immediately to prevent flash
-      lockScreen.remove();
-      // Remove event listeners
-      document.removeEventListener('click', this.blockEvent, true);
-      document.removeEventListener('keydown', this.blockEvent, true);
-      
-      // Only reload if page is fully loaded
-      if (document.readyState === 'complete') {
-        window.location.reload();
-      }
-    }
-  }
-  
-  /**
-   * Block events helper
-   */
-  private blockEvent = (e: Event) => {
-    e.preventDefault();
-    e.stopPropagation();
+    // Lock functionality disabled - no action needed
+    console.log('🔓 Lock functionality disabled - no lock to clear');
   }
   
   /**
    * Force lock the application
    */
   public forceLock(reason: string): void {
-    this.lockState = {
-      isLocked: true,
-      reason,
-      timestamp: Date.now()
-    };
-    this.saveLockState();
-    this.stopMonitoring();
-    
-    // Force page reload to show lock screen
-    window.location.reload();
+    // Lock functionality disabled - ignore lock requests
+    console.log('🔓 Lock functionality disabled - ignoring lock request:', reason);
   }
   
   /**
@@ -148,7 +119,7 @@ class HeartbeatMonitor {
       const userData = await userResponse.json();
       
       if (!userData || !userData.id) {
-        this.forceLock("Authentication failure - user data invalid");
+        console.log('⚠️ User not authenticated - skipping heartbeat check');
         return;
       }
       
@@ -159,12 +130,12 @@ class HeartbeatMonitor {
       const currentBalance = parseFloat(userData.balance || '0');
       const latestTransaction = transactions[0] || null;
       
-      // Verify balance integrity
+      // Verify balance integrity (without locking)
       const integrityCheck = this.verifyBalanceIntegrity(currentBalance, latestTransaction);
       
       if (!integrityCheck.valid) {
-        this.forceLock(integrityCheck.reason || "Balance integrity check failed");
-        return;
+        console.warn('⚠️ Balance integrity issue detected:', integrityCheck.reason);
+        // Log warning but don't lock the app
       }
       
       // Update heartbeat data
@@ -181,14 +152,7 @@ class HeartbeatMonitor {
       
     } catch (error) {
       console.error("Heartbeat check failed:", error);
-      
-      // If multiple consecutive failures, lock app
-      const lastCheck = this.getLastCheck();
-      const timeSinceLastCheck = Date.now() - lastCheck;
-      
-      if (timeSinceLastCheck > 180000) { // 3 minutes
-        this.forceLock("System integrity compromised - multiple heartbeat failures");
-      }
+      // Just log error - don't lock the app
     }
   }
   
@@ -283,11 +247,7 @@ class HeartbeatMonitor {
    * Save lock state to localStorage
    */
   private saveLockState(): void {
-    try {
-      localStorage.setItem(this.STORAGE_KEYS.LOCK_STATE, JSON.stringify(this.lockState));
-    } catch (error) {
-      console.warn("Failed to save lock state:", error);
-    }
+    // Lock functionality disabled - no action needed
   }
   
   /**
@@ -317,90 +277,8 @@ class HeartbeatMonitor {
    * Check initial lock state on startup
    */
   private checkInitialLock(): void {
-    if (this.lockState.isLocked) {
-      const timeSinceLock = Date.now() - this.lockState.timestamp;
-      
-      // Auto-clear lock if it's older than 1 hour (likely stale)
-      if (timeSinceLock > 3600000) { // 1 hour
-        console.log('🔓 Clearing stale lock state (older than 1 hour)');
-        this.lockState = { isLocked: false, reason: '', timestamp: 0 };
-        this.saveLockState();
-        return;
-      }
-      
-      // Also clear if user is not authenticated (prevents lock screen on login page)
-      const userStr = localStorage.getItem('user_data') || sessionStorage.getItem('user_data');
-      if (!userStr) {
-        console.log('🔓 Clearing lock state - no user authentication found');
-        this.lockState = { isLocked: false, reason: '', timestamp: 0 };
-        this.saveLockState();
-        return;
-      }
-      
-      // If locked for more than 24 hours, allow unlock (emergency recovery)
-      if (timeSinceLock > 86400000) {
-        console.log('🔓 Emergency unlock - locked for more than 24 hours');
-        this.lockState = { isLocked: false, reason: '', timestamp: 0 };
-        this.saveLockState();
-      } else {
-        // Show lock screen
-        this.showLockScreen();
-      }
-    }
-  }
-  
-  /**
-   * Show lock screen
-   */
-  private showLockScreen(): void {
-    // Check if lock screen already exists to prevent duplicates
-    if (document.getElementById('tamper-lock-screen')) {
-      return;
-    }
-    
-    const lockScreen = document.createElement('div');
-    lockScreen.id = 'tamper-lock-screen';
-    lockScreen.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
-      color: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 999999;
-      font-family: system-ui, -apple-system, sans-serif;
-    `;
-    
-    lockScreen.innerHTML = `
-      <div style="text-align: center; padding: 2rem; max-width: 500px;">
-        <div style="font-size: 4rem; margin-bottom: 1rem;">🔒</div>
-        <h1 style="font-size: 2rem; margin-bottom: 1rem; font-weight: bold;">Application Locked</h1>
-        <p style="font-size: 1.1rem; margin-bottom: 1.5rem; opacity: 0.9;">
-          Security breach detected. The application has been locked to protect data integrity.
-        </p>
-        <div style="background: rgba(255,255,255,0.1); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
-          <p style="font-size: 0.9rem; margin: 0;">
-            <strong>Reason:</strong> ${this.lockState.reason}
-          </p>
-          <p style="font-size: 0.9rem; margin: 0.5rem 0 0;">
-            <strong>Time:</strong> ${new Date(this.lockState.timestamp).toLocaleString()}
-          </p>
-        </div>
-        <p style="font-size: 0.9rem; opacity: 0.7;">
-          Please contact your system administrator to resolve this issue.
-        </p>
-      </div>
-    `;
-    
-    document.body.appendChild(lockScreen);
-    
-    // Prevent any interaction using the helper method
-    document.addEventListener('click', this.blockEvent, true);
-    document.addEventListener('keydown', this.blockEvent, true);
+    // Lock functionality completely removed
+    console.log('🔓 Lock functionality disabled - system unlocked');
   }
 }
 
