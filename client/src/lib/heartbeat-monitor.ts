@@ -89,6 +89,18 @@ class HeartbeatMonitor {
   }
   
   /**
+   * Clear lock state (for development/testing)
+   */
+  public clearLock(): void {
+    this.lockState = { isLocked: false, reason: '', timestamp: 0 };
+    localStorage.removeItem(this.STORAGE_KEYS.LOCK_STATE);
+    // Reload page to clear lock screen if showing
+    if (document.getElementById('tamper-lock-screen')) {
+      window.location.reload();
+    }
+  }
+  
+  /**
    * Force lock the application
    */
   public forceLock(reason: string): void {
@@ -286,8 +298,26 @@ class HeartbeatMonitor {
     if (this.lockState.isLocked) {
       const timeSinceLock = Date.now() - this.lockState.timestamp;
       
+      // Auto-clear lock if it's older than 1 hour (likely stale)
+      if (timeSinceLock > 3600000) { // 1 hour
+        console.log('🔓 Clearing stale lock state (older than 1 hour)');
+        this.lockState = { isLocked: false, reason: '', timestamp: 0 };
+        this.saveLockState();
+        return;
+      }
+      
+      // Also clear if user is not authenticated (prevents lock screen on login page)
+      const userStr = localStorage.getItem('user_data') || sessionStorage.getItem('user_data');
+      if (!userStr) {
+        console.log('🔓 Clearing lock state - no user authentication found');
+        this.lockState = { isLocked: false, reason: '', timestamp: 0 };
+        this.saveLockState();
+        return;
+      }
+      
       // If locked for more than 24 hours, allow unlock (emergency recovery)
       if (timeSinceLock > 86400000) {
+        console.log('🔓 Emergency unlock - locked for more than 24 hours');
         this.lockState = { isLocked: false, reason: '', timestamp: 0 };
         this.saveLockState();
       } else {
