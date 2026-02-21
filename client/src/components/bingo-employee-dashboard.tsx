@@ -10,7 +10,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Upload, X, Settings, Trophy, Eye, EyeOff, Edit, Trash2, Sparkles } from "lucide-react";
 import { customBingoVoice } from "@/lib/custom-voice-synthesis";
 import Papa from 'papaparse';
-import HeartbeatMonitor from "@/lib/heartbeat-monitor";
 
 interface BingoEmployeeDashboardProps {
   onLogout: () => void;
@@ -22,22 +21,6 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-
-  // Initialize heartbeat monitoring
-  useEffect(() => {
-    // Lock functionality disabled - no lock checks needed
-    console.log('🔓 Lock functionality disabled - starting heartbeat monitoring');
-    
-    // Only start heartbeat monitoring if user is authenticated
-    if (user && user.id) {
-      HeartbeatMonitor.startMonitoring();
-    }
-    
-    // Cleanup on unmount
-    return () => {
-      HeartbeatMonitor.stopMonitoring();
-    };
-  }, [user]);
 
   // Game state management
   const [gameState, setGameState] = useState<GameState>('SETTING');
