@@ -24,6 +24,7 @@ class HeartbeatMonitor {
   private isRunning = false;
   private lockState: LockState = { isLocked: false, reason: '', timestamp: 0 };
   private heartbeatData: HeartbeatData | null = null;
+  private isInitializing = false; // Prevent refresh loops during init
   
   // Obfuscated keys for security (browser-compatible)
   private readonly STORAGE_KEYS = {
@@ -33,8 +34,10 @@ class HeartbeatMonitor {
   };
   
   private constructor() {
+    this.isInitializing = true;
     this.loadStoredData();
     this.checkInitialLock();
+    this.isInitializing = false;
   }
   
   public static getInstance(): HeartbeatMonitor {
@@ -94,10 +97,29 @@ class HeartbeatMonitor {
   public clearLock(): void {
     this.lockState = { isLocked: false, reason: '', timestamp: 0 };
     localStorage.removeItem(this.STORAGE_KEYS.LOCK_STATE);
-    // Reload page to clear lock screen if showing
-    if (document.getElementById('tamper-lock-screen')) {
-      window.location.reload();
+    
+    // Only reload if lock screen is currently showing and we're not initializing
+    const lockScreen = document.getElementById('tamper-lock-screen');
+    if (lockScreen && !this.isInitializing) {
+      // Remove lock screen immediately to prevent flash
+      lockScreen.remove();
+      // Remove event listeners
+      document.removeEventListener('click', this.blockEvent, true);
+      document.removeEventListener('keydown', this.blockEvent, true);
+      
+      // Only reload if page is fully loaded
+      if (document.readyState === 'complete') {
+        window.location.reload();
+      }
     }
+  }
+  
+  /**
+   * Block events helper
+   */
+  private blockEvent = (e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
   }
   
   /**
@@ -331,6 +353,11 @@ class HeartbeatMonitor {
    * Show lock screen
    */
   private showLockScreen(): void {
+    // Check if lock screen already exists to prevent duplicates
+    if (document.getElementById('tamper-lock-screen')) {
+      return;
+    }
+    
     const lockScreen = document.createElement('div');
     lockScreen.id = 'tamper-lock-screen';
     lockScreen.style.cssText = `
@@ -371,9 +398,9 @@ class HeartbeatMonitor {
     
     document.body.appendChild(lockScreen);
     
-    // Prevent any interaction
-    document.addEventListener('click', (e) => e.stopPropagation(), true);
-    document.addEventListener('keydown', (e) => e.preventDefault(), true);
+    // Prevent any interaction using the helper method
+    document.addEventListener('click', this.blockEvent, true);
+    document.addEventListener('keydown', this.blockEvent, true);
   }
 }
 
