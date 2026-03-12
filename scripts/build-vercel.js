@@ -4,22 +4,18 @@ import { execSync } from 'child_process';
 import { readFileSync, writeFileSync } from 'fs';
 import path from 'path';
 
-console.log('🚀 Starting Vercel deployment preparation...');
+console.log('🚀 Starting Vercel build preparation...');
 
 try {
   // Step 1: Clean previous build
   console.log('🧹 Cleaning previous build...');
   execSync('rm -rf dist', { stdio: 'inherit' });
 
-  // Step 2: Install dependencies
-  console.log('📦 Installing dependencies...');
-  execSync('npm install', { stdio: 'inherit' });
-
-  // Step 3: Build the application
+  // Step 2: Build the application (skip npm install for now)
   console.log('🔨 Building application...');
   execSync('npm run build:vercel', { stdio: 'inherit' });
 
-  // Step 4: Create .env.production if it doesn't exist
+  // Step 3: Create .env.production if it doesn't exist
   const envPath = path.join(process.cwd(), '.env.production');
   try {
     readFileSync(envPath);
@@ -49,31 +45,31 @@ VERCEL_OIDC_TOKEN=your_oidc_token_here (set in Vercel dashboard)
     console.log('✅ Created .env.production template');
   }
 
-  // Step 5: Check if Vercel CLI is installed
+  // Step 4: Check if Vercel CLI is installed
   try {
     execSync('vercel --version', { stdio: 'pipe' });
     console.log('✅ Vercel CLI is installed');
   } catch (error) {
-    console.log('📦 Installing Vercel CLI...');
-    execSync('npm install -g vercel', { stdio: 'inherit' });
+    console.log('📦 Please install Vercel CLI manually:');
+    console.log('   npm install -g vercel');
   }
 
-  // Step 6: Deployment instructions
-  console.log('\n🎯 Ready for Vercel deployment!');
+  // Step 5: Deployment instructions
+  console.log('\n🎯 Build completed successfully!');
   console.log('\n📋 Next Steps:');
   console.log('1. Set up environment variables in Vercel dashboard:');
-  console.log('   - POSTGRES_URL');
-  console.log('   - POSTGRES_USER');
-  console.log('   - POSTGRES_PASSWORD');
-  console.log('   - POSTGRES_DB');
+  console.log('   - DATABASE_URL (from your .env.local)');
+  console.log('   - POSTGRES_USER=postgres');
+  console.log('   - POSTGRES_DB=postgres');
   console.log('   - ENCRYPTION_SECRET');
   console.log('   - LICENSE_SECRET');
-  console.log('\n2. Run deployment:');
-  console.log('   npm run deploy:vercel');
-  console.log('\n3. Or deploy manually:');
+  console.log('   - VERCEL_OIDC_TOKEN');
+  console.log('\n2. Deploy to Vercel:');
   console.log('   vercel --prod');
+  console.log('\n3. Or use the automated script:');
+  console.log('   npm run deploy:vercel');
 
 } catch (error) {
-  console.error('❌ Deployment preparation failed:', error.message);
+  console.error('❌ Build preparation failed:', error.message);
   process.exit(1);
 }

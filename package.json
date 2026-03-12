@@ -12,7 +12,7 @@
     "start:web": "NODE_ENV=production tsx --env-file=.env server/index.ts",
     "check": "tsc",
     "db:push": "drizzle-kit push",
-    "deploy:vercel": "npm run build:vercel && vercel --prod",
+    "deploy:vercel": "node scripts/build-vercel.js && vercel --prod",
     "obfuscate": "javascript-obfuscator dist/server.js --output dist/server.js --compact true --control-flow-flattening true --dead-code-injection true --debug-protection true --domain-lock true --split-strings true --string-array true --self-defending true --reserved-strings ['console', 'log', 'error', 'warn']"
   },
   "dependencies": {
