@@ -16,7 +16,7 @@
   ],
   "functions": {
     "api/index.ts": {
-      "runtime": "nodejs18.x",
+      "runtime": "@nodejs18",
       "maxDuration": 30
     }
   },
