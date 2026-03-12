@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "name": "bingo-web-version",
   "buildCommand": "npm run build:vercel",
   "outputDirectory": "dist",
   "installCommand": "npm install",
@@ -23,12 +22,11 @@
   },
   "env": {
     "NODE_ENV": "production",
-    "POSTGRES_URL": "@postgres_url",
-    "POSTGRES_USER": "@postgres_user",
-    "POSTGRES_PASSWORD": "@postgres_password",
-    "POSTGRES_DB": "@postgres_db",
-    "ENCRYPTION_SECRET": "@encryption_secret",
-    "LICENSE_SECRET": "@license_secret"
+    "POSTGRES_URL": "postgres://7494ef1e6e1659bc4b1f951242b1733f0058d762b51259b7ae17d92ea4a2bb30:sk_W0TddwplDabfmO8HvglXo@db.prisma.io:5432/postgres?sslmode=require",
+    "POSTGRES_USER": "postgres",
+    "POSTGRES_DB": "postgres",
+    "ENCRYPTION_SECRET": "bingo-master-secure-shared-secret-key-32",
+    "LICENSE_SECRET": "your_license_secret_here"
   },
   "build": {
     "env": {
