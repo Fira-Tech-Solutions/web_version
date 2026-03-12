@@ -26,3 +26,5 @@ uploads/
 *.log
 debug.log
 error.log
+.vercel
+.env*.local

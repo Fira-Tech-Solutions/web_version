@@ -29,18 +29,21 @@ try {
     const envTemplate = `# Production Environment Variables for Vercel
 # These should be set in Vercel dashboard under Environment Variables
 
-# Database Configuration
-POSTGRES_URL=postgresql://user:password@host:port/database
+# Database Configuration (from your existing setup)
+DATABASE_URL=postgres://7494ef1e6e1659bc4b1f951242b1733f0058d762b51259b7ae17d92ea4a2bb30:sk_W0TddwplDabfmO8HvglXo@db.prisma.io:5432/postgres?sslmode=require
 POSTGRES_USER=postgres
-POSTGRES_PASSWORD=your_password
-POSTGRES_DB=your_database
+POSTGRES_PASSWORD=your_password (set in Vercel dashboard)
+POSTGRES_DB=postgres
 
 # Security
 ENCRYPTION_SECRET=bingo-master-secure-shared-secret-key-32
-LICENSE_SECRET=your_license_secret
+LICENSE_SECRET=your_license_secret (set in Vercel dashboard)
 
 # Application
 NODE_ENV=production
+
+# Vercel-specific
+VERCEL_OIDC_TOKEN=your_oidc_token_here (set in Vercel dashboard)
 `;
     writeFileSync(envPath, envTemplate);
     console.log('✅ Created .env.production template');
