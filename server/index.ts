@@ -3,15 +3,18 @@ import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import session from "express-session";
-import SqliteStore from "better-sqlite3-session-store";
-import Database from "better-sqlite3";
+import pg from "pg";
+import pgSession from "connect-pg-simple";
 import path from "path";
 import { registerRoutes } from "./src/routes";
 import { setupVite, serveStatic, log } from "./src/lib/vite";
 import "./src/lib/console-override";
 
-// SQLite database for session store
-const sqlite = new Database(process.env.SESSION_DB_PATH || path.join(process.cwd(), 'data', 'sessions.db'));
+// PostgreSQL session store
+const PgSession = pgSession(session);
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5433/test_bingo',
+});
 
 const app = express();
 
@@ -33,7 +36,6 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 
 // Serve static audio files with proper MIME types (before other routes)
-import path from "path";
 const publicPath = path.resolve(process.cwd(), "public");
 app.use(express.static(publicPath, {
   setHeaders: (res, filePath) => {
@@ -43,11 +45,12 @@ app.use(express.static(publicPath, {
   }
 }));
 
-// Configure session middleware with persistent SQLite store
+// Configure session middleware with PostgreSQL store
 app.use(session({
-  store: new (SqliteStore(session))({
-    client: sqlite,
-    expired: { clear: true, intervalMs: 900000 }
+  store: new PgSession({
+    pool: pool,
+    tableName: 'user_sessions',
+    createTableIfMissing: true
   }),
   secret: process.env.SESSION_SECRET || 'bingo-session-secret-key-longer-for-security',
   resave: false,

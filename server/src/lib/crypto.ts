@@ -1,4 +1,10 @@
-import crypto from "crypto";
+import * as crypto from "crypto";
+import fs from "fs";
+import path from "path";
+
+// Load actual RSA keys from files
+const PRIVATE_KEY = fs.readFileSync(path.join(process.cwd(), "keys/private_key.pem"), "utf8");
+const PUBLIC_KEY = fs.readFileSync(path.join(process.cwd(), "keys/public_key.pem"), "utf8");
 
 // For this implementation, we will use a fixed key directory or environment variables.
 // In a real production app, these should be securely stored.
@@ -31,18 +37,20 @@ export function decryptData(encryptedString: string): any {
 
 // Simple mock for generating keys if needed, but we'll use a single system key for now
 // to simplify the "Public Key" requirement as a "Verified Signature".
-export function signBalance(payload: object, privateKey: string): string {
+export function signBalance(payload: object, privateKey?: string): string {
+    const keyToUse = privateKey || PRIVATE_KEY;
     const signer = crypto.createSign("sha256");
     signer.update(JSON.stringify(payload));
     signer.end();
-    return signer.sign(privateKey, "hex");
+    return signer.sign(keyToUse, "hex");
 }
 
-export function verifyBalance(payload: object, signature: string, publicKey: string): boolean {
+export function verifyBalance(payload: object, signature: string, publicKey?: string): boolean {
+    const keyToUse = publicKey || PUBLIC_KEY;
     const verifier = crypto.createVerify("sha256");
     verifier.update(JSON.stringify(payload));
     verifier.end();
-    return verifier.verify(publicKey, signature, "hex");
+    return verifier.verify(keyToUse, signature, "hex");
 }
 
 // Helper to generate a key pair for the system

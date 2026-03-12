@@ -1,11 +1,10 @@
 import type { Config } from 'drizzle-kit';
 
 export default {
-  dialect: 'sqlite',
-  schema: './shared/schema-simple.ts',
+  dialect: 'postgresql',
+  schema: './shared/schema-postgres.ts',
   out: './drizzle',
-  driver: 'better-sqlite3',
   dbCredentials: {
-    url: './db/bingo.db',
+    url: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5433/test_bingo',
   },
 } satisfies Config;

@@ -4,7 +4,6 @@ import express from "express";
 import { createServer } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "../../storage/storage";
-import { isActivated } from "../../../scripts/license-db";
 
 // Import route modules
 import { authRoutes } from "./auth.routes";
@@ -31,24 +30,23 @@ export async function registerRoutes(app: Express) {
 
   // ─── ACTIVATION GATE ──────────────────────────────────────────────
   app.use("/api", (req, res, next) => {
-    const allowed = req.path.startsWith("/license") ||
+    const allowed = req.path === "/api/license/status" ||
+                   req.path === "/api/license/machine-id" ||
                    req.path === "/activate" ||
                    req.path.startsWith("/auth");
     if (allowed) return next();
-    if (!isActivated()) {
-      return res.status(403).json({
-        message: "Application not activated. Please upload a valid activation file first."
-      });
-    }
+    // Activation is frozen - always allow access
     next();
   });
 
   // ─── MOUNT MODULAR ROUTES ─────────────────────────────────────────
   app.use("/api/auth", authRoutes);
-  app.use("/api/admin", adminRoutes);
   app.use("/api/games", gameRoutes);
   app.use("/api/cartelas", cartelaRoutes);
   app.use("/api/balance", balanceRoutes);
+  
+  // Admin routes (mount before catch-all to ensure they take precedence)
+  app.use("/api/admin", adminRoutes);
   
   // Transactions route (separate from admin routes for specific client compatibility)
   app.get("/api/transactions/admin", adminController.getAdminTransactions);

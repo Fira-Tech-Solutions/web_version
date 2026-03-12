@@ -1,9 +1,9 @@
+
 // @ts-nocheck
 import type { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import * as os from "os";
 import { storage } from "../../storage/storage";
-import { adminStorage } from "../../storage/admin-storage";
 import UltimateMachineIdGenerator from "../lib/ultimate-machine-id";
 import { encryptData, decryptData, signBalance, verifyBalance, generateKeyPair } from "../lib/crypto";
 
@@ -186,7 +186,7 @@ export async function getCurrentUser(req: Request, res: Response) {
         let user;
 
         if (isAdmin) {
-            const adminUser = adminStorage.getAdminUserById(userId);
+            const adminUser = await adminStorage.getAdminUserById(userId);
             if (adminUser) {
                 const machineId = await ultimateGenerator.getUserMachineId(adminUser.id || userId, adminUser.username);
                 user = {

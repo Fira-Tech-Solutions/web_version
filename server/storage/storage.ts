@@ -1,15 +1,13 @@
 import {
   users, games, gamePlayers, transactions, gameHistory,
-  dailyRevenueSummary, cartelas, usedRecharges,
+  dailyRevenueSummary, cartelas, usedRecharges, rechargeFiles,
   type User, type Game, type GamePlayer,
-  type Transaction, type GameHistory, type DailyRevenueSummary, type Cartela, type UsedRecharge
-} from "@shared/schema-simple";
-import { employeeDb } from "../../scripts/employee-db";
-import { eq, and, or, desc, gte, lte, sum, count } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-
-// Initialize Drizzle ORM with the employee database
-export const db = drizzle(employeeDb);
+  type Transaction, type GameHistory, type DailyRevenueSummary, type Cartela, type UsedRecharge, type RechargeFile
+} from "@shared/schema-postgres";
+import { eq, and, or, desc, gte, lte, sum, count, lt, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { db } from "../../scripts/postgres-db";
+import { Pool } from 'pg';
 
 export interface IStorage {
   // User methods
@@ -90,119 +88,46 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   // User methods
   async getUser(id: number): Promise<User | undefined> {
-    const stmt = employeeDb.prepare('SELECT * FROM users WHERE id = ?');
-    const user = stmt.get(id) as any;
-    
-    if (user) {
-      // Map database fields to frontend format
-      return {
-        ...user,
-        machineId: user.machine_id, // Convert machine_id to machineId
-        isBlocked: Boolean(user.is_blocked) // Convert is_blocked to isBlocked
-      } as User;
-    }
-    
-    return undefined;
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const stmt = employeeDb.prepare('SELECT * FROM users WHERE username = ?');
-    const user = stmt.get(username) as any;
-    
-    if (user) {
-      // Map database fields to frontend format
-      return {
-        ...user,
-        machineId: user.machine_id, // Convert machine_id to machineId
-        isBlocked: Boolean(user.is_blocked) // Convert is_blocked to isBlocked
-      } as User;
-    }
-    
-    return undefined;
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
   }
 
   async getUserByAccountNumber(accountNumber: string): Promise<User | undefined> {
-    const stmt = employeeDb.prepare('SELECT * FROM users WHERE account_number = ?');
-    const user = stmt.get(accountNumber) as any;
-    
-    if (user) {
-      // Map database fields to frontend format
-      return {
-        ...user,
-        machineId: user.machine_id, // Convert machine_id to machineId
-        isBlocked: Boolean(user.is_blocked) // Convert is_blocked to isBlocked
-      } as User;
-    }
-    
-    return undefined;
+    const [user] = await db.select().from(users).where(eq(users.accountNumber, accountNumber));
+    return user;
   }
 
   async createUser(user: any): Promise<User> {
-    const stmt = employeeDb.prepare(`
-      INSERT INTO users (username, password, role, name, account_number, balance, is_blocked)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    const result = stmt.run(
-      user.username,
-      user.password,
-      user.role || 'employee',
-      user.name,
-      user.accountNumber,
-      user.balance || '0.00',
-      (user.isBlocked || false) ? 1 : 0 // Convert boolean to integer for SQLite
-    );
-
-    return this.getUser(result.lastInsertRowid as number)!;
+    const [newUser] = await db.insert(users).values(user).returning();
+    return newUser;
   }
 
   async updateUser(id: number, updates: Partial<User>): Promise<User | undefined> {
-    const stmt = employeeDb.prepare(`
-      UPDATE users
-      SET username = COALESCE(?, username),
-          password = COALESCE(?, password),
-          role = COALESCE(?, role),
-          name = COALESCE(?, name),
-          account_number = COALESCE(?, account_number),
-          balance = COALESCE(?, balance),
-          is_blocked = COALESCE(?, is_blocked)
-      WHERE id = ?
-    `);
-
-    stmt.run(
-      updates.username,
-      updates.password,
-      updates.role,
-      updates.name,
-      updates.accountNumber,
-      updates.balance,
-      updates.isBlocked !== undefined ? (updates.isBlocked ? 1 : 0) : undefined, // Convert boolean to integer for SQLite
-      id
-    );
-
-    return this.getUser(id);
+    const [user] = await db.update(users).set(updates).where(eq(users.id, id)).returning();
+    return user;
   }
 
   async updateUserBalance(id: number, balance: string): Promise<User | undefined> {
-    const stmt = employeeDb.prepare('UPDATE users SET balance = ? WHERE id = ?');
-    stmt.run(balance, id);
-    return this.getUser(id);
+    const [user] = await db.update(users).set({ balance }).where(eq(users.id, id)).returning();
+    return user;
   }
 
   async deleteUser(id: number): Promise<boolean> {
-    const stmt = employeeDb.prepare('DELETE FROM users WHERE id = ?');
-    const result = stmt.run(id);
-    return result.changes > 0;
+    const result = await db.delete(users).where(eq(users.id, id));
+    return result.rowCount > 0;
   }
 
   async getUsers(): Promise<User[]> {
-    const stmt = employeeDb.prepare('SELECT * FROM users');
-    return stmt.all() as User[];
+    return await db.select().from(users);
   }
 
   async getAllTransactions(): Promise<any[]> {
-    const stmt = employeeDb.prepare('SELECT * FROM transactions');
-    return stmt.all() as any[];
+    return await db.select().from(transactions);
   }
 
   async generateAccountNumber(): Promise<string> {
@@ -216,10 +141,9 @@ export class DatabaseStorage implements IStorage {
       // Generate random 10-digit number
       accountNumber = Math.floor(1000000000 + Math.random() * 9000000000).toString();
       
-      // Check if it's unique using raw SQLite
-      const stmt = employeeDb.prepare('SELECT COUNT(*) as count FROM users WHERE account_number = ?');
-      const result = stmt.get(accountNumber) as { count: number };
-      isUnique = result.count === 0;
+      // Check if it's unique using PostgreSQL
+      const [existing] = await db.select({ count: count() }).from(users).where(eq(users.accountNumber, accountNumber));
+      isUnique = existing.count === 0;
       attempts++;
     } while (!isUnique && attempts < maxAttempts);
 
@@ -324,14 +248,13 @@ export class DatabaseStorage implements IStorage {
 
   async removeGamePlayer(id: number): Promise<boolean> {
     const result = await db.delete(gamePlayers).where(eq(gamePlayers.id, id));
-    return result.changes > 0;
+    return result.rowCount > 0;
   }
 
   async addGamePlayer(player: any): Promise<GamePlayer> {
     const [newGamePlayer] = await db.insert(gamePlayers).values(player).returning();
     return newGamePlayer;
   }
-
   // Transaction methods
   async createTransaction(transaction: any): Promise<Transaction> {
     const [newTransaction] = await db.insert(transactions).values(transaction).returning();
@@ -431,6 +354,62 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
+  // Admin tracking methods - now unified into main storage
+  async getAllEmployees() {
+    return await db.select().from(users).where(eq(users.role, 'employee'));
+  }
+
+  async createRechargeFile(rechargeFile: InsertRechargeFile) {
+    const [file] = await db.insert(rechargeFiles).values(rechargeFile).returning();
+    return file;
+  }
+
+  async getAllRechargeFiles() {
+    return await db.select().from(rechargeFiles).orderBy(desc(rechargeFiles.createdAt));
+  }
+
+  async markRechargeFileAsUsed(id: number) {
+    const [file] = await db.update(rechargeFiles)
+      .set({ usedAt: new Date().toISOString() })
+      .where(eq(rechargeFiles.id, id))
+      .returning();
+    return file;
+  }
+
+  async updateRechargeFileStats(userId: number, amount: string) {
+    const user = await this.getUser(userId);
+    if (user) {
+      await db.update(users)
+        .set({
+          totalRechargeFiles: sql`${users.totalRechargeFiles} + 1`,
+          totalRechargeAmount: sql`CAST(${users.totalRechargeAmount} AS REAL) + CAST(${amount} AS REAL)`,
+          employeePaidAmount: sql`CAST(${users.employeePaidAmount} AS REAL) + CAST(${amount} AS REAL)`,
+        })
+        .where(eq(users.id, userId));
+    }
+  }
+
+  async getTotalEmployeePaid(): Promise<string> {
+    const employees = await db.select().from(users).where(eq(users.role, 'employee'));
+    const total = employees.reduce((sum, emp) => {
+      return sum + parseFloat(emp.employeePaidAmount || '0');
+    }, 0);
+    return total.toString();
+  }
+
+  async getTotalRechargeAmount(): Promise<string> {
+    const employees = await db.select().from(users).where(eq(users.role, 'employee'));
+    const total = employees.reduce((sum, emp) => {
+      return sum + parseFloat(emp.totalRechargeAmount || '0');
+    }, 0);
+    return total.toString();
+  }
+
+  async getRechargeFileCount(): Promise<number> {
+    const result = await db.select().from(rechargeFiles);
+    return result.length;
+  }
+
   // Financial methods - Implement 15% System Cut
   async processGameProfits(gameId: number, totalCollected: string): Promise<void> {
     const game = await this.getGame(gameId);
@@ -492,14 +471,14 @@ export class DatabaseStorage implements IStorage {
   // Cartela shop methods
   async getCartelasByShop(shopId: number): Promise<Cartela[]> {
     return await db.select().from(cartelas)
-      .where(eq(cartelas.shopId, shopId))
+      .where(eq(cartelas.employeeId, shopId))
       .orderBy(cartelas.cartelaNumber);
   }
 
   async resetCartelasForShop(shopId: number): Promise<void> {
     await db.update(cartelas)
-      .set({ bookedBy: null, bookedAt: null })
-      .where(eq(cartelas.shopId, shopId));
+      .set({ bookedBy: null })
+      .where(eq(cartelas.employeeId, shopId));
   }
 
   async getShop(shopId: number): Promise<any> {
@@ -510,7 +489,7 @@ export class DatabaseStorage implements IStorage {
 
   async getUserByShopId(shopId: number): Promise<any> {
     const [user] = await db.select().from(users)
-      .where(and(eq(users.shopId, shopId), eq(users.role, 'admin')));
+      .where(and(eq(users.id, shopId), eq(users.role, 'admin')));
     return user || null;
   }
 
@@ -520,33 +499,32 @@ export class DatabaseStorage implements IStorage {
     
     if (existingSummary.length > 0) {
       // Update existing summary
-      await db.update(dailyRevenueSummary)
+      const [updated] = await db.update(dailyRevenueSummary)
         .set({
           totalAdminRevenue: (parseFloat(existingSummary[0].totalAdminRevenue) + parseFloat(summary.totalAdminRevenue)).toString(),
           totalGamesPlayed: existingSummary[0].totalGamesPlayed + summary.totalGamesPlayed,
           totalPlayersRegistered: existingSummary[0].totalPlayersRegistered + summary.totalPlayersRegistered
         })
-        .where(eq(dailyRevenueSummary.id, existingSummary[0].id));
+        .where(eq(dailyRevenueSummary.id, existingSummary[0].id))
+        .returning();
+      return updated;
     } else {
       // Create new summary
-      await db.insert(dailyRevenueSummary).values({
+      const [newSummary] = await db.insert(dailyRevenueSummary).values({
         date: summary.date,
         employeeId: summary.employeeId,
         totalAdminRevenue: summary.totalAdminRevenue,
         totalGamesPlayed: summary.totalGamesPlayed,
         totalPlayersRegistered: summary.totalPlayersRegistered
-      });
+      }).returning();
+      return newSummary;
     }
-    
-    const result = await db.select().from(dailyRevenueSummary)
-      .where(eq(dailyRevenueSummary.date, summary.date));
-    return result[0] || undefined;
   }
 
   async getDailyRevenueSummary(date: string): Promise<DailyRevenueSummary | undefined> {
-    const result = await db.select().from(dailyRevenueSummary)
+    const [result] = await db.select().from(dailyRevenueSummary)
       .where(eq(dailyRevenueSummary.date, date));
-    return result[0] || undefined;
+    return result;
   }
 
   async getDailyRevenueSummaries(dateFrom?: string, dateTo?: string): Promise<DailyRevenueSummary[]> {
@@ -622,9 +600,7 @@ export class DatabaseStorage implements IStorage {
     const today = this.getCurrentEATDate().slice(0, 10); // YYYY-MM-DD
     
     await db.delete(dailyRevenueSummary)
-      .where(and(
-        lt(dailyRevenueSummary.date, today)
-      ));
+      .where(lt(dailyRevenueSummary.date, today));
   }
 
   // Used Recharges methods (for replay protection)
@@ -645,3 +621,4 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
+export { db };

@@ -5,6 +5,7 @@ import * as adminController from "../controllers/admin.controller";
 const router = Router();
 
 // Employee & tracking management
+router.post("/employees", adminController.createEmployee);
 router.get("/employees", adminController.getAdminEmployees);
 router.delete("/employees/:id", adminController.deleteAdminEmployee);
 router.post("/employees/generate-recharge-file", adminController.generateRechargeFile);

@@ -1,7 +1,6 @@
 // @ts-nocheck
 import type { Request, Response, NextFunction } from "express";
 import { storage } from "../../storage/storage";
-import { adminStorage } from "../../storage/admin-storage";
 
 /**
  * Middleware to require authentication.
@@ -19,7 +18,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
         // If admin flag is set, check admin database first
         if (isAdmin) {
-            const adminUser = adminStorage.getAdminUserById(userId);
+            const adminUser = await adminStorage.getAdminUserById(userId);
             if (adminUser) {
                 user = {
                     id: adminUser.id,
@@ -76,23 +75,35 @@ export function requireRole(...roles: string[]) {
  * Used in admin-related controllers.
  */
 export async function resolveAdminUser(userId: number): Promise<any | null> {
-    let user = await storage.getUser(userId);
-    if (!user) {
-        const adminUser = adminStorage.getAdminUserById(userId);
-        if (adminUser) {
-            user = {
-                id: adminUser.id,
-                username: adminUser.username,
-                password: adminUser.password,
-                role: 'admin',
-                name: adminUser.name,
-                shopId: adminUser.shopId,
-                accountNumber: adminUser.accountNumber,
-                balance: adminUser.adminGeneratedBalance,
-                isBlocked: adminUser.isBlocked,
-                createdAt: adminUser.createdAt
-            } as any;
-        }
+    console.log(`resolveAdminUser called with userId: ${userId}`);
+    
+    // Check main database for user
+    const user = await storage.getUser(userId);
+    console.log(`User from main database:`, user ? { id: user.id, role: user.role, username: user.username } : null);
+    
+    if (user && (user.role === 'admin' || user.role === 'employee')) {
+        const result = {
+            id: user.id,
+            username: user.username,
+            password: user.password,
+            role: user.role || 'admin',
+            name: user.name,
+            shopId: user.shopId,
+            accountNumber: user.accountNumber,
+            balance: user.balance,
+            isBlocked: user.isBlocked,
+            machineId: user.machineId,
+            createdAt: user.createdAt,
+            // Admin tracking fields
+            adminGeneratedBalance: user.adminGeneratedBalance,
+            employeePaidAmount: user.employeePaidAmount,
+            totalRechargeFiles: user.totalRechargeFiles,
+            totalRechargeAmount: user.totalRechargeAmount
+        } as any;
+        console.log(`Returning user:`, { id: result.id, role: result.role, username: result.username });
+        return result;
     }
-    return user;
+    
+    console.log(`User not found in main database`);
+    return null;
 }

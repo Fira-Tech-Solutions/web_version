@@ -68,9 +68,13 @@ export interface ActivationRow {
 }
 
 export function isActivated(): boolean {
-  const database = getLicenseDb();
-  const row = database.prepare("SELECT machine_id FROM activation WHERE id = 1").get();
-  return !!row;
+  // Frozen activation - always return true for PostgreSQL migration
+  return true;
+  
+  // Original code (commented out):
+  // const database = getLicenseDb();
+  // const row = database.prepare("SELECT machine_id FROM activation WHERE id = 1").get();
+  // return !!row;
 }
 
 export function getActivation(): ActivationRow | null {

@@ -9,7 +9,6 @@ data/license.db*
 data/license.db-shm
 data/license.db-wal
 keys/private_key.pem
-keys/
 activation_*.enc
 *.enc
 .env

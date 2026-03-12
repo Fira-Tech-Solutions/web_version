@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { FIXED_CARTELAS } from "./fixed-cartelas";
-import { cartelas } from "@shared/schema-simple";
+import { cartelas, users } from "@shared/schema-postgres";
 import { eq, and } from "drizzle-orm";
 import { db } from "../../storage/storage";
 
@@ -92,16 +92,15 @@ export async function loadHardcodedCartelas(adminId: number): Promise<void> {
 export async function ensureHardcodedCartelasLoaded(): Promise<void> {
   console.log("Loading hardcoded cartelas for all employees...");
 
-  try {
-    const { users } = await import("@shared/schema-simple");
-    const allEmployees = await db.select().from(users).where(eq(users.role, 'employee'));
+    try {
+      const allEmployees = await db.select().from(users).where(eq(users.role, 'employee'));
 
-    for (const employee of allEmployees) {
-      await loadHardcodedCartelas(employee.id);
+      for (const employee of allEmployees) {
+        await loadHardcodedCartelas(employee.id);
+      }
+
+      console.log("Finished loading hardcoded cartelas for all employees");
+    } catch (error) {
+      console.error("Error loading hardcoded cartelas:", error);
     }
-
-    console.log("Finished loading hardcoded cartelas for all employees");
-  } catch (error) {
-    console.error("Error loading hardcoded cartelas:", error);
-  }
 }

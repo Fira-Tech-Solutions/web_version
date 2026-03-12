@@ -2,9 +2,8 @@
 import type { Request, Response } from "express";
 import { eq, and, desc, count, like, or } from "drizzle-orm";
 import { db } from "../../storage/storage";
-import { cartelas } from "@shared/schema-simple";
+import { cartelas } from "@shared/schema-postgres";
 import { loadHardcodedCartelas as loadHardcodedLib } from "../lib/cartela-loader";
-import { employeeDb } from "../../../scripts/employee-db";
 
 const logCartelaUpdate = (employeeId: number) => {
     console.log(`Cartela updated for employee ${employeeId} at ${new Date().toISOString()}`);
@@ -473,18 +472,26 @@ export const csvImport = async (req: Request, res: Response) => {
 
         if (validated.length === 0) return res.status(400).json({ error: "No valid cartelas", errors });
 
-        const sqlite = employeeDb;
-        sqlite.exec('BEGIN TRANSACTION');
         try {
-            sqlite.prepare('DELETE FROM cartelas WHERE employee_id = ?').run(employeeId);
-            const insert = sqlite.prepare('INSERT INTO cartelas (employee_id, cartela_number, card_no, name, pattern, is_hardcoded, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-            const time = now.getTime();
-            for (const v of validated) {
-                insert.run(employeeId, v.cartelaNumber, v.cardNo, `Cartela ${v.cartelaNumber}`, v.pattern, 0, 1, time, time);
-            }
-            sqlite.exec('COMMIT');
+            // Delete existing cartelas for this employee
+            await db.delete(cartelas).where(eq(cartelas.employeeId, employeeId));
+            
+            // Insert new cartelas
+            const time = new Date();
+            const cartelaData = validated.map(v => ({
+                employeeId,
+                cartelaNumber: v.cartelaNumber,
+                cardNo: v.cardNo,
+                name: `Cartela ${v.cartelaNumber}`,
+                pattern: v.pattern,
+                isHardcoded: false,
+                isActive: true,
+                createdAt: time,
+                updatedAt: time,
+            }));
+            
+            await db.insert(cartelas).values(cartelaData);
         } catch (e) {
-            sqlite.exec('ROLLBACK');
             throw e;
         }
 
