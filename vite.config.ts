@@ -4,7 +4,7 @@ import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
 export default defineConfig({
-  base: './',
+  base: process.env.NODE_ENV === 'production' ? '/' : './',
   plugins: [
     react(),
     runtimeErrorOverlay(),
@@ -28,11 +28,23 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          radix: ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu'],
+          utils: ['date-fns', 'clsx', 'tailwind-merge']
+        }
+      }
+    }
   },
   server: {
     fs: {
       strict: true,
       deny: ["**/.*"],
     },
+  },
+  define: {
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
   },
 });
