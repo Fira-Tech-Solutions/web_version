@@ -2381,7 +2381,7 @@ export default function BingoEmployeeDashboard({ onLogout }: BingoEmployeeDashbo
             <div className="bg-blue-900 rounded-lg p-2 text-center">
               <div className="text-6xl font-bold mb-2">ደራሽ</div>
               <div className="bg-blue-700 rounded-lg p-4">
-                <div className="text-5xl font-bold text-yellow-400">{topUpFee}</div>
+                <div className="text-5xl font-bold text-yellow-400">{selectedCards.size <= 1 ? 0 : (selectedCards.size * parseInt(topUpFee)) - (selectedCards.size >= 2 && selectedCards.size <= 5 ? 10 : selectedCards.size >= 6 && selectedCards.size <= 12 ? 20 : 30)}</div>
                 <div className="text-2xl">ብር</div>
               </div>
             </div>
