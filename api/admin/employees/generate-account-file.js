@@ -52,6 +52,12 @@ export default async function handler(req, res) {
       version: '1.0'
     };
 
+    // Generate filename
+    const filename = `${username}_account_${Date.now()}.json`;
+    
+    // Create encrypted/simulated file content
+    const encryptedData = JSON.stringify(fileData);
+
     console.log('✅ Account file generated for new employee:', username);
 
     res.status(200).json({
@@ -62,7 +68,9 @@ export default async function handler(req, res) {
         initialBalance: parseFloat(initialBalance),
         role: 'employee'
       },
-      fileData: fileData
+      fileData: fileData,
+      encryptedData: encryptedData,
+      filename: filename
     });
 
   } catch (error) {
