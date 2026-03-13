@@ -6,11 +6,11 @@
 
 import { Pool } from 'pg';
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-
 export default async function handler(req, res) {
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+
   try {
     if (req.method !== 'POST') {
       return res.status(405).json({ message: 'Method not allowed' });
