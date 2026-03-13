@@ -28,26 +28,20 @@ export function useActivation() {
     try {
       setState(prev => ({ ...prev, isLoading: true, error: null }));
       
-      // Check license status
-      const licenseResponse = await apiRequest("GET", "/api/license/status");
-      const licenseData = await licenseResponse.json();
-      
-      // Get machine ID
-      const machineResponse = await apiRequest("GET", "/api/license/machine-id");
-      const machineData = await machineResponse.json();
-      
+      // Bypass activation - always return activated
       setState({
-        isActivated: licenseData.activated || false,
+        isActivated: true,
         isLoading: false,
         error: null,
-        machineId: machineData.machineId || ""
+        machineId: "bypassed"
       });
     } catch (error) {
       console.error("Failed to check activation status:", error);
       setState(prev => ({
         ...prev,
+        isActivated: true, // Still return true on error
         isLoading: false,
-        error: "Failed to check activation status"
+        error: null
       }));
     }
   };
