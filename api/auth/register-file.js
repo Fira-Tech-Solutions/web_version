@@ -69,12 +69,86 @@ export default async function handler(req, res) {
     
     console.log('📄 Register file request:', { 
       encryptedDataProvided: !!encryptedData,
-      encryptedDataLength: encryptedData ? encryptedData.length : 0
+      encryptedDataLength: encryptedData ? encryptedData.length : 0,
+      encryptedDataType: typeof encryptedData,
+      encryptedDataPreview: encryptedData ? encryptedData.substring(0, 100) + '...' : 'null'
     });
 
     if (!encryptedData) {
       console.log('❌ Missing encrypted data:', { encryptedData });
       return res.status(400).json({ message: 'Encrypted data is required' });
+    }
+
+    // Check if it's a simple JSON string (not encrypted)
+    if (encryptedData.startsWith('{') || encryptedData.startsWith('[')) {
+      console.log('🔓 Data appears to be unencrypted JSON, treating as direct payload');
+      try {
+        const payload = JSON.parse(encryptedData);
+        
+        if (!payload || !payload.username || !payload.password) {
+          console.log('❌ Invalid payload:', payload);
+          return res.status(400).json({ message: 'Invalid registration file payload' });
+        }
+
+        console.log('👤 Creating user from JSON payload:', { 
+          username: payload.username,
+          fullName: payload.fullName,
+          initialBalance: payload.initialBalance
+        });
+
+        // Check if user already exists
+        const existingUser = await pool.query('SELECT id FROM users WHERE username = $1', [payload.username]);
+        if (existingUser.rows.length > 0) {
+          console.log('⚠️ User already exists:', payload.username);
+          return res.status(409).json({ message: 'User already exists' });
+        }
+
+        // Hash password
+        const bcrypt = require('bcrypt');
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(payload.password, saltRounds);
+
+        // Create user in database
+        const result = await pool.query(
+          `INSERT INTO users (username, password, name, balance, role, is_blocked, created_at) 
+           VALUES ($1, $2, $3, $4, $5, $6, NOW()) 
+           RETURNING id, username, name, balance, role`,
+          [
+            payload.username,
+            hashedPassword,
+            payload.fullName || payload.username,
+            parseFloat(payload.initialBalance) || 0,
+            'employee',
+            false
+          ]
+        );
+
+        const createdUser = result.rows[0];
+        console.log('✅ User created successfully from JSON:', createdUser.username);
+
+        // Generate filename for registration file
+        const timestamp = Date.now();
+        const filename = `registration_${payload.username}_${timestamp}.json`;
+
+        res.status(200).json({
+          message: 'Registration successful',
+          filename: filename,
+          username: createdUser.username,
+          user: {
+            id: createdUser.id,
+            username: createdUser.username,
+            name: createdUser.name,
+            balance: createdUser.balance,
+            role: createdUser.role
+          },
+          processedAt: new Date().toISOString()
+        });
+        return;
+
+      } catch (jsonError) {
+        console.log('❌ Failed to parse JSON payload:', jsonError);
+        return res.status(400).json({ message: 'Invalid JSON format in registration file' });
+      }
     }
 
     try {
