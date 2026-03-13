@@ -50,14 +50,9 @@ app.get('/health', (req, res) => {
   });
 });
 
-// 404 handler
-app.use('*', (req, res) => {
-  if (req.path.startsWith('/api')) {
-    res.status(404).json({ message: 'API endpoint not found' });
-  } else {
-    // For non-API routes, serve the SPA
-    res.sendFile(path.join(process.cwd(), 'dist/public/index.html'));
-  }
+// 404 handler for API routes only
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ message: 'API endpoint not found' });
 });
 
 // Error handling middleware
