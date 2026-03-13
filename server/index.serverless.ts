@@ -1,6 +1,6 @@
 import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./src/routes";
+import { registerRoutes } from "./src/routes/index.js";
 import path from "path";
 import "./src/lib/console-override";
 
