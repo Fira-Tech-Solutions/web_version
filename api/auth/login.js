@@ -25,7 +25,25 @@ export default async function handler(req, res) {
       return res.status(405).json({ message: 'Method not allowed' });
     }
 
-    const { username, password } = req.body;
+    // Handle Vercel body parsing
+    let body = req.body;
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body);
+      } catch (e) {
+        console.log('❌ Failed to parse body:', e);
+        return res.status(400).json({ message: 'Invalid JSON in request body' });
+      }
+    }
+
+    const { username, password } = body;
+
+    console.log('🔐 Parsed credentials:', { 
+      usernameProvided: !!username, 
+      passwordProvided: !!password,
+      username: username || 'missing',
+      passwordLength: password ? password.length : 0
+    });
 
     if (!username || !password) {
       console.log('❌ Missing credentials:', { username, passwordProvided: !!password });
