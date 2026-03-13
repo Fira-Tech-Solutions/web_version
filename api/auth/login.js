@@ -7,19 +7,28 @@
 import { Pool } from 'pg';
 import bcrypt from 'bcrypt';
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-
 export default async function handler(req, res) {
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+
   try {
+    console.log('🔐 AUTH LOGIN REQUEST:', {
+      method: req.method,
+      headers: req.headers,
+      body: req.body,
+      url: req.url
+    });
+
     if (req.method !== 'POST') {
+      console.log('❌ Method not allowed:', req.method);
       return res.status(405).json({ message: 'Method not allowed' });
     }
 
     const { username, password } = req.body;
 
     if (!username || !password) {
+      console.log('❌ Missing credentials:', { username, passwordProvided: !!password });
       return res.status(400).json({ message: 'Username and password required' });
     }
 
@@ -61,7 +70,7 @@ export default async function handler(req, res) {
     // Success
     console.log('✅ Login successful for:', username);
     
-    res.status(200).json({
+    const response = {
       message: 'Login successful',
       user: {
         id: user.id,
@@ -71,7 +80,10 @@ export default async function handler(req, res) {
         balance: user.balance,
         isBlocked: user.is_blocked
       }
-    });
+    };
+
+    console.log('📤 Sending response:', response);
+    res.status(200).json(response);
 
   } catch (error) {
     console.error('❌ Login error:', error);
