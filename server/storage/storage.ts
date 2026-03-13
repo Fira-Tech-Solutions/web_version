@@ -2,11 +2,11 @@ import {
   users, games, gamePlayers, transactions, gameHistory,
   dailyRevenueSummary, cartelas, usedRecharges, rechargeFiles,
   type User, type Game, type GamePlayer,
-  type Transaction, type GameHistory, type DailyRevenueSummary, type Cartela, type UsedRecharge, type RechargeFile
+  type Transaction, type GameHistory, type DailyRevenueSummary, type Cartela, type UsedRecharge, type RechargeFile, type InsertRechargeFile
 } from "@shared/schema-postgres";
 import { eq, and, or, desc, gte, lte, sum, count, lt, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { db } from "../../scripts/postgres-db";
+import { db } from "../../scripts/postgres-db.js";
 import { Pool } from 'pg';
 
 export interface IStorage {
@@ -203,8 +203,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateGamePrizePool(gameId: number, additionalAmount: number): Promise<Game> {
+    const currentGame = await this.getGame(gameId);
+    if (!currentGame) {
+      throw new Error(`Game ${gameId} not found`);
+    }
+    
     const [game] = await db.update(games)
-      .set({ prizePool: game.prizePool + additionalAmount })
+      .set({ prizePool: currentGame.prizePool + additionalAmount })
       .where(eq(games.id, gameId))
       .returning();
     return game;

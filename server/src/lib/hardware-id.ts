@@ -2,7 +2,7 @@
  * Hardware ID Generator - Ultimate Version Only
  * Uses ultimate stable hardware markers for consistent machine identification
  */
-import UltimateMachineIdGenerator from './ultimate-machine-id';
+import UltimateMachineIdGenerator from './ultimate-machine-id.js';
 
 let generator: UltimateMachineIdGenerator | null = null;
 
