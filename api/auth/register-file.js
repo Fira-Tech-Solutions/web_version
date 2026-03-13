@@ -135,6 +135,7 @@ export default async function handler(req, res) {
       res.status(200).json({
         message: 'Registration successful',
         filename: filename,
+        username: createdUser.username,
         user: {
           id: createdUser.id,
           username: createdUser.username,
