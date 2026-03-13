@@ -16,7 +16,7 @@ export default async function handler(req, res) {
       return res.status(405).json({ message: 'Method not allowed' });
     }
 
-    // For now, return the admin user (since we don't have sessions in standalone mode)
+    // For standalone mode, always return the admin user
     // In a real app, you'd extract user info from session/token
     const result = await pool.query('SELECT * FROM users WHERE username = $1', ['admin']);
     
@@ -25,6 +25,9 @@ export default async function handler(req, res) {
     }
 
     const user = result.rows[0];
+    
+    // Set session-like headers for frontend compatibility
+    res.setHeader('Set-Cookie', 'session=authenticated; HttpOnly; Secure; SameSite=Strict; Path=/');
     
     res.status(200).json({
       user: {

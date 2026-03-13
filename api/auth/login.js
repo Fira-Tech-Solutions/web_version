@@ -83,6 +83,9 @@ export default async function handler(req, res) {
     };
 
     console.log('📤 Sending response:', response);
+    
+    // Set session-like headers for frontend compatibility
+    res.setHeader('Set-Cookie', 'session=authenticated; HttpOnly; Secure; SameSite=Strict; Path=/');
     res.status(200).json(response);
 
   } catch (error) {
