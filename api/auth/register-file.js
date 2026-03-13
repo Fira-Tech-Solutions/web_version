@@ -46,75 +46,29 @@ export default async function handler(req, res) {
       }
     }
 
-    const { fullName, username, password, initialBalance, privateKey } = body;
+    const { encryptedData } = body;
     
     console.log('📄 Register file request:', { 
-      fullName, 
-      username, 
-      passwordProvided: !!password, 
-      initialBalance,
-      privateKeyProvided: !!privateKey 
+      encryptedDataProvided: !!encryptedData,
+      encryptedDataLength: encryptedData ? encryptedData.length : 0
     });
 
-    if (!fullName || !username || !password || initialBalance === undefined) {
-      console.log('❌ Missing required fields:', { fullName, username, passwordProvided: !!password, initialBalance });
-      return res.status(400).json({ message: 'Full name, username, password, and initial balance are required' });
+    if (!encryptedData) {
+      console.log('❌ Missing encrypted data:', { encryptedData });
+      return res.status(400).json({ message: 'Encrypted data is required' });
     }
 
-    // Create registration file payload
-    const payload = {
-      fullName,
-      username,
-      password, // Include password for registration file
-      initialBalance: parseFloat(initialBalance),
-      role: 'employee',
-      generatedAt: new Date().toISOString(),
-      fileType: 'registration_file',
-      version: '1.0',
-      nonce: crypto.randomBytes(16).toString('hex'),
-      timestamp: Date.now()
-    };
+    // Generate filename for the registration file
+    const timestamp = Date.now();
+    const filename = `registration_${timestamp}.enc`;
 
-    // Generate RSA signature (using provided private key or fallback)
-    let signature;
-    if (privateKey) {
-      try {
-        signature = signData(payload, privateKey);
-      } catch (e) {
-        console.log('❌ RSA signing failed:', e);
-        return res.status(400).json({ message: 'Invalid private key for signing' });
-      }
-    } else {
-      // For demo purposes, create a mock signature
-      signature = 'mock_signature_' + crypto.randomBytes(32).toString('hex');
-    }
-
-    // Create file content with payload and signature
-    const fileContent = {
-      payload,
-      signature
-    };
-
-    // Encrypt the file content
-    const encryptedData = encryptData(fileContent);
-
-    // Generate .enc filename
-    const filename = `${username}_registration_${Date.now()}.enc`;
-
-    console.log('✅ Registration file generated for:', username);
+    console.log('✅ Registration file processed:', filename);
 
     res.status(200).json({
-      message: 'Registration file generated successfully',
-      employee: {
-        fullName,
-        username,
-        initialBalance: parseFloat(initialBalance),
-        role: 'employee'
-      },
+      message: 'Registration file processed successfully',
       filename: filename,
       encryptedData: encryptedData,
-      signature: signature,
-      payload: payload
+      processedAt: new Date().toISOString()
     });
 
   } catch (error) {
