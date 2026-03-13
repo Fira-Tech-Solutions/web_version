@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { io, Socket } from 'socket.io-client';
 
 interface AdminUserEvent {
   type: 'user_created';
@@ -23,49 +22,17 @@ export function useAdminRealtime() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    // Connect to Socket.io for real-time updates
-    const socket = io(`http://${window.location.hostname}:5000`, {
-      transports: ['websocket', 'polling']
-    });
-    
-    socket.on('connect', () => {
-      console.log('📡 Connected to admin real-time updates');
-      setIsConnected(true);
-    });
+    // Disable WebSocket connections for serverless deployment
+    console.log('📡 Admin real-time updates disabled in serverless deployment');
+    setIsConnected(false);
 
-    socket.on('adminUserCreated', (data) => {
-      console.log('👥 New user created:', data.user);
-      
-      // Invalidate and refetch admin tracking data
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/tracking-data'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/employees'] });
-      
-      // Show notification
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('New Employee Created', {
-          body: `${data.user.name} (${data.user.username}) has been added to the system`,
-          icon: '/favicon.ico'
-        });
-      }
-    });
-
-    socket.on('disconnect', () => {
-      console.log('📡 Disconnected from admin real-time updates');
-      setIsConnected(false);
-    });
-
-    socket.on('connect_error', (error) => {
-      console.error('Socket.io connection error:', error);
-      setIsConnected(false);
-    });
-
-    // Request notification permission
+    // Request notification permission (still works without WebSocket)
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
 
     return () => {
-      socket.disconnect();
+      // No cleanup needed for disabled WebSocket
     };
   }, [queryClient]);
 
