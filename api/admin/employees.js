@@ -6,11 +6,11 @@
 
 import { Pool } from 'pg';
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-
 export default async function handler(req, res) {
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+
   try {
     console.log('👥 Admin employees request:', req.method);
 
