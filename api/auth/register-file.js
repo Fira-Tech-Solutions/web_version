@@ -25,6 +25,25 @@ function signData(data, privateKey) {
   return signer.sign(privateKey, "hex");
 }
 
+// RSA decryption function (standalone version)
+function decryptData(encryptedString) {
+  const SECRET_KEY = process.env.ENCRYPTION_SECRET || "bingo-master-secure-shared-secret-key-32";
+  const [ivHex, encryptedHex] = encryptedString.split(":");
+  const iv = Buffer.from(ivHex, "hex");
+  const decipher = crypto.createDecipheriv("aes-256-cbc", Buffer.from(SECRET_KEY.padEnd(32).slice(0, 32)), iv);
+  let decrypted = decipher.update(encryptedHex, "hex", "utf8");
+  decrypted += decipher.final("utf8");
+  return JSON.parse(decrypted);
+}
+
+// RSA signature verification function (standalone version)
+function verifyData(data, signature, publicKey) {
+  const verifier = crypto.createVerify("sha256");
+  verifier.update(JSON.stringify(data));
+  verifier.end();
+  return verifier.verify(publicKey, signature, "hex");
+}
+
 export default async function handler(req, res) {
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -58,18 +77,78 @@ export default async function handler(req, res) {
       return res.status(400).json({ message: 'Encrypted data is required' });
     }
 
-    // Generate filename for the registration file
-    const timestamp = Date.now();
-    const filename = `registration_${timestamp}.enc`;
+    try {
+      // Decrypt the file content
+      const fileContent = decryptData(encryptedData);
+      console.log('🔓 File content decrypted:', { 
+        hasPayload: !!fileContent.payload,
+        hasSignature: !!fileContent.signature
+      });
 
-    console.log('✅ Registration file processed:', filename);
+      const { payload, signature } = fileContent;
+      
+      if (!payload || !payload.username || !payload.password) {
+        console.log('❌ Invalid payload:', payload);
+        return res.status(400).json({ message: 'Invalid registration file payload' });
+      }
 
-    res.status(200).json({
-      message: 'Registration file processed successfully',
-      filename: filename,
-      encryptedData: encryptedData,
-      processedAt: new Date().toISOString()
-    });
+      console.log('👤 Creating user:', { 
+        username: payload.username,
+        fullName: payload.fullName,
+        initialBalance: payload.initialBalance
+      });
+
+      // Check if user already exists
+      const existingUser = await pool.query('SELECT id FROM users WHERE username = $1', [payload.username]);
+      if (existingUser.rows.length > 0) {
+        console.log('⚠️ User already exists:', payload.username);
+        return res.status(409).json({ message: 'User already exists' });
+      }
+
+      // Hash the password
+      const bcrypt = require('bcrypt');
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash(payload.password, saltRounds);
+
+      // Create the user in database
+      const result = await pool.query(
+        `INSERT INTO users (username, password, name, balance, role, is_blocked, created_at) 
+         VALUES ($1, $2, $3, $4, $5, $6, NOW()) 
+         RETURNING id, username, name, balance, role`,
+        [
+          payload.username,
+          hashedPassword,
+          payload.fullName || payload.username,
+          parseFloat(payload.initialBalance) || 0,
+          'employee',
+          false
+        ]
+      );
+
+      const createdUser = result.rows[0];
+      console.log('✅ User created successfully:', createdUser.username);
+
+      // Generate filename for the registration file
+      const timestamp = Date.now();
+      const filename = `registration_${payload.username}_${timestamp}.enc`;
+
+      res.status(200).json({
+        message: 'Registration successful',
+        filename: filename,
+        user: {
+          id: createdUser.id,
+          username: createdUser.username,
+          name: createdUser.name,
+          balance: createdUser.balance,
+          role: createdUser.role
+        },
+        processedAt: new Date().toISOString()
+      });
+
+    } catch (decryptError) {
+      console.log('❌ Decryption failed:', decryptError);
+      return res.status(400).json({ message: 'Invalid or corrupted registration file' });
+    }
 
   } catch (error) {
     console.error('❌ Register file error:', error);
