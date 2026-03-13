@@ -27,44 +27,40 @@ export default async function handler(req, res) {
       }
     }
 
-    const { employeeId } = body;
+    const { fullName, username, password, initialBalance, privateKey } = body;
     
-    if (!employeeId) {
-      console.log('❌ Employee ID missing:', { body, employeeId });
-      return res.status(400).json({ message: 'Employee ID required' });
+    console.log('📄 Generate account file request:', { 
+      fullName, 
+      username, 
+      passwordProvided: !!password, 
+      initialBalance,
+      privateKeyProvided: !!privateKey 
+    });
+
+    if (!fullName || !username || !password || initialBalance === undefined) {
+      console.log('❌ Missing required fields:', { fullName, username, passwordProvided: !!password, initialBalance });
+      return res.status(400).json({ message: 'Full name, username, password, and initial balance are required' });
     }
 
-    console.log('📄 Generate account file request:', { employeeId });
-
-    // Get employee data
-    const empResult = await pool.query('SELECT * FROM users WHERE id = $1', [employeeId]);
-    
-    if (empResult.rows.length === 0) {
-      return res.status(404).json({ message: 'Employee not found' });
-    }
-
-    const employee = empResult.rows[0];
-    
-    // Create a simple account file response
+    // Create account file data for new employee (not creating user in DB)
     const fileData = {
-      username: employee.username,
-      name: employee.name,
-      balance: employee.balance,
-      role: employee.role,
+      fullName,
+      username,
+      initialBalance: parseFloat(initialBalance),
       generatedAt: new Date().toISOString(),
-      employeeId: employee.id
+      fileType: 'employee_account',
+      version: '1.0'
     };
 
-    console.log('✅ Account file generated for:', employee.username);
+    console.log('✅ Account file generated for new employee:', username);
 
     res.status(200).json({
       message: 'Account file generated successfully',
       employee: {
-        id: employee.id,
-        username: employee.username,
-        name: employee.name,
-        balance: employee.balance,
-        role: employee.role
+        fullName,
+        username,
+        initialBalance: parseFloat(initialBalance),
+        role: 'employee'
       },
       fileData: fileData
     });
