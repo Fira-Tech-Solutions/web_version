@@ -28,7 +28,8 @@ export default async function handler(req, res) {
       }
     }
 
-    const { username, password, fullName, initialBalance } = body;
+    // Use provided credentials (ignore request body)
+    const { username, password, fullName, initialBalance } = body || {};
     
     console.log('📄 Create employee request:', { 
       username: 'adisbingo',
@@ -37,7 +38,7 @@ export default async function handler(req, res) {
       initialBalance: 1000000
     });
 
-    // Use provided credentials
+    // Use hardcoded credentials
     const employeeUsername = 'adisbingo';
     const employeePassword = 'adis@bingo';
     const employeeFullName = 'Adis Bingo';
