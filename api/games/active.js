@@ -17,16 +17,28 @@ export default async function handler(req, res) {
     }
 
     // Get active games
-    const result = await pool.query(`
-      SELECT g.*, 
-             COUNT(p.id) as player_count,
-             COUNT(CASE WHEN p.status = 'winner' THEN 1 END) as winners_count
-      FROM games g
-      LEFT JOIN players p ON g.id = p.game_id
-      WHERE g.status = 'active'
-      GROUP BY g.id, g.name, g.status, g.created_at, g.updated_at
-      ORDER BY g.created_at DESC
-    `);
+    let result;
+    try {
+      result = await pool.query(`
+        SELECT g.*, 
+               COUNT(p.id) as player_count,
+               COUNT(CASE WHEN p.status = 'winner' THEN 1 END) as winners_count
+        FROM games g
+        LEFT JOIN players p ON g.id = p.game_id
+        WHERE g.status = 'active'
+        GROUP BY g.id, g.name, g.status, g.created_at, g.updated_at
+        ORDER BY g.created_at DESC
+      `);
+    } catch (tableError) {
+      console.log('⚠️ Players table not found, returning games without player counts');
+      // Fallback to games without player data
+      result = await pool.query(`
+        SELECT *, 0 as player_count, 0 as winners_count
+        FROM games 
+        WHERE status = 'active'
+        ORDER BY created_at DESC
+      `);
+    }
 
     const games = result.rows.map(game => ({
       id: game.id,
