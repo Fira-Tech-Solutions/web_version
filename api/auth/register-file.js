@@ -83,7 +83,20 @@ export default async function handler(req, res) {
     if (encryptedData.startsWith('{') || encryptedData.startsWith('[')) {
       console.log('🔓 Data appears to be unencrypted JSON, treating as direct payload');
       try {
-        const payload = JSON.parse(encryptedData);
+        let payload;
+        
+        // Try to parse as JSON directly first
+        try {
+          payload = JSON.parse(encryptedData);
+        } catch (firstParseError) {
+          // If that fails, it might be double-encoded JSON
+          try {
+            const decodedOnce = JSON.parse(encryptedData);
+            payload = typeof decodedOnce === 'string' ? JSON.parse(decodedOnce) : decodedOnce;
+          } catch (secondParseError) {
+            throw new Error('Unable to parse registration data as JSON');
+          }
+        }
         
         if (!payload || !payload.username || !payload.password) {
           console.log('❌ Invalid payload:', payload);
