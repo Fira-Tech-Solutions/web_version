@@ -36,21 +36,50 @@ export default async function handler(req, res) {
     for (let i = 1; i < lines.length && i < 100; i++) {
       const values = lines[i].split(',');
       if (values.length >= 7) {
+        // Transform string arrays to integer arrays
+        const parseNumbers = (numStr) => {
+          return numStr.replace(/"/g, '').split(',').map(n => parseInt(n.trim()) || 0);
+        };
+
         const cartela = {
-          cno: values[0]?.replace(/"/g, ''),
-          userId: values[1]?.replace(/"/g, ''),
-          cardNo: values[2]?.replace(/"/g, ''),
-          b: values[3]?.replace(/"/g, ''),
-          i: values[4]?.replace(/"/g, ''),
-          n: values[5]?.replace(/"/g, ''),
-          g: values[6]?.replace(/"/g, ''),
-          o: values.length > 7 ? values[7]?.replace(/"/g, '') : ''
+          cno: values[0]?.replace(/"/g, '').trim(),
+          userId: values[1]?.replace(/"/g, '').trim(),
+          cardNo: values[2]?.replace(/"/g, '').trim(),
+          b: parseNumbers(values[3] || ''),
+          i: parseNumbers(values[4] || ''),
+          n: parseNumbers(values[5] || ''),
+          g: parseNumbers(values[6] || ''),
+          o: values.length > 7 ? parseNumbers(values[7] || '') : []
         };
         cartelas.push(cartela);
       }
     }
 
     console.log(`✅ Processed ${cartelas.length} cartelas`);
+
+    // Try to save to database (optional - just return processed data for now)
+    try {
+      // Create cartelas table if it doesn't exist
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS cartelas (
+          id SERIAL PRIMARY KEY,
+          cno VARCHAR(50),
+          user_id VARCHAR(50),
+          card_no VARCHAR(50),
+          b INTEGER[],
+          i INTEGER[],
+          n INTEGER[],
+          g INTEGER[],
+          o INTEGER[],
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+
+      // Insert cartelas (simplified - just return success for now)
+      console.log('📊 Cartelas table ready for data');
+    } catch (dbError) {
+      console.log('⚠️ Database operation skipped:', dbError.message);
+    }
 
     res.status(200).json({
       message: 'Cartelas data processed successfully',
